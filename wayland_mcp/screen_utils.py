@@ -11,11 +11,23 @@ from wayland_mcp.add_rulers import add_rulers
 class ScreenController:
     """Handles screen capture, comparison and analysis using VLM."""
 
-    def __init__(self, vlm_agent: VLMAgent):
+    def __init__(self, vlm_agent: VLMAgent = None):
         """
-        Initialize with a VLMAgent instance.
+        Initialize with a VLMAgent instance or None for lazy initialization.
         """
-        self.vlm_agent = vlm_agent
+        self._vlm_agent = vlm_agent
+        self._vlm_factory = None
+    
+    def set_vlm_factory(self, factory_func):
+        """Set a factory function for lazy VLM initialization."""
+        self._vlm_factory = factory_func
+    
+    @property
+    def vlm_agent(self):
+        """Get VLM agent, initializing if needed."""
+        if self._vlm_agent is None and self._vlm_factory is not None:
+            self._vlm_agent = self._vlm_factory()
+        return self._vlm_agent
 
     def capture(self, filename: str = "screenshot.png", include_mouse: bool = True) -> dict:
         """Capture screenshot with measurement rulers.

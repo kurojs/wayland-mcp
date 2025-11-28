@@ -29,9 +29,20 @@ from wayland_mcp.keyboard_utils import KeyboardController
 from wayland_mcp.screen_utils import ScreenController
 from wayland_mcp.app import VLMAgent
 # Configuration setup
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+API_KEY = os.environ.get("GEMINI_API_KEY") or os.environ.get("OPENROUTER_API_KEY", "")
+VLM_PROVIDER = os.environ.get("VLM_PROVIDER", "openrouter")
+
+# Debug logging
+logging.info("=" * 60)
+logging.info("VLM Configuration:")
+logging.info("Provider: %s", VLM_PROVIDER)
+logging.info("API Key found: %s", "Yes" if API_KEY else "No")
+if API_KEY:
+    logging.info("API Key starts with: %s...", API_KEY[:15])
+logging.info("=" * 60)
+
 # Fall back to config file if not in environment
-if not OPENROUTER_API_KEY:
+if not API_KEY:
     def get_config_path() -> str:
         """Get config file path from environment or default location."""
         return os.path.join(
@@ -40,17 +51,36 @@ if not OPENROUTER_API_KEY:
         )
     try:
         with open(get_config_path(), encoding="utf-8") as f:
-            OPENROUTER_API_KEY = json.load(f)[
-                "mcpServers"]["wayland-screenshot"]["env"]["OPENROUTER_API_KEY"
-            ]
+            config = json.load(f)
+            if VLM_PROVIDER == "gemini":
+                API_KEY = config["mcpServers"]["wayland-screenshot"]["env"]["GEMINI_API_KEY"]
+            else:
+                API_KEY = config["mcpServers"]["wayland-screenshot"]["env"]["OPENROUTER_API_KEY"]
     except (json.JSONDecodeError, KeyError, IOError) as e:
         logging.error("Failed to load API key: %s", e)
-        OPENROUTER_API_KEY = ""
+        API_KEY = ""
 # Initialize core components using MouseController's built-in detection
 mouse = MouseController()
 logging.info("Initialized MouseController with device: %s", mouse.device)
 keyboard = KeyboardController()
-screen = ScreenController(VLMAgent(OPENROUTER_API_KEY))
+
+# Initialize ScreenController with lazy VLM initialization
+def get_vlm_agent():
+    """Lazy initialization of VLM agent with current environment variables."""
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("OPENROUTER_API_KEY", "")
+    provider = os.environ.get("VLM_PROVIDER", "openrouter")
+    logging.info("=" * 60)
+    logging.info("VLM Configuration (lazy init):")
+    logging.info("Provider: %s", provider)
+    logging.info("API Key found: %s", "Yes" if api_key else "No")
+    if api_key:
+        logging.info("API Key starts with: %s...", api_key[:15])
+    logging.info("=" * 60)
+    return VLMAgent(api_key, provider=provider)
+
+# Pass None initially, will be initialized on first use
+screen = ScreenController(None)
+screen.set_vlm_factory(get_vlm_agent)
 # Server configuration
 try:
     PORT = int(os.environ.get("WAYLAND_MCP_PORT", "4999"))

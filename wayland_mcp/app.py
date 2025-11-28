@@ -208,13 +208,19 @@ class VLMAgent:
     Handles image analysis and comparison using VLM APIs.
     Requires an API key for authentication.
     """
-    def __init__(self, api_key=None):
-        """Initialize with API key validation"""
+    def __init__(self, api_key=None, provider=None):
+        """Initialize with API key validation and provider selection
+        
+        Args:
+            api_key: API key for the VLM service
+            provider: 'openrouter' or 'gemini' (defaults to 'openrouter')
+        """
         self.api_key = api_key
+        self.provider = provider or os.environ.get("VLM_PROVIDER", "openrouter")
         if not api_key:
             logging.warning("VLMAgent initialized without API key!")
         else:
-            logging.info("VLMAgent initialized with valid API key")
+            logging.info("VLMAgent initialized with valid API key for provider: %s", self.provider)
     def compare_images(
         self,
         img1_path: str,
@@ -298,13 +304,90 @@ class VLMAgent:
         return self.analyze_screenshot(image_path, prompt)
 # pylint: disable=too-many-locals
     def analyze_screenshot(self, image_path: str, prompt: str) -> str:
-        """Analyze screenshot using Kimi-VL model
+        """Analyze screenshot using VLM (OpenRouter or Gemini)
         Args:
             image_path: Path to image file
             prompt: Text prompt for analysis
         Returns:
             str: Analysis result or error message
         """
+        if self.provider == "gemini":
+            return self._analyze_with_gemini(image_path, prompt)
+        return self._analyze_with_openrouter(image_path, prompt)
+    
+    def _analyze_with_gemini(self, image_path: str, prompt: str) -> str:
+        """Analyze screenshot using Google Gemini API"""
+        # Validate inputs
+        if not os.path.exists(image_path):
+            error_msg = f"Error: Image file not found - {image_path}"
+            logging.error(error_msg)
+            return error_msg
+        
+        # Encode image
+        try:
+            with open(image_path, "rb") as image_file:
+                file_size = os.path.getsize(image_path)
+                logging.info("Processing image: %s (%d bytes)", image_path, file_size)
+                encoded_image = base64.b64encode(image_file.read()).decode("utf-8")
+                logging.info("Image encoded successfully (%d chars)", len(encoded_image))
+        except (IOError, OSError) as e:
+            error_msg = f"Error: Failed to process image - {str(e)}"
+            logging.error(error_msg)
+            return error_msg
+        
+        # Use Gemini API
+        model = os.environ.get("VLM_MODEL", "gemini-2.0-flash-exp")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        
+        headers = {
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "contents": [{
+                "parts": [
+                    {"text": prompt},
+                    {
+                        "inline_data": {
+                            "mime_type": "image/png",
+                            "data": encoded_image
+                        }
+                    }
+                ]
+            }]
+        }
+        
+        logging.info("Sending Gemini request with prompt: %s", prompt)
+        try:
+            start_time = time.time()
+            response = requests.post(
+                f"{url}?key={self.api_key}",
+                headers=headers,
+                json=payload,
+                timeout=60,
+            )
+            elapsed = time.time() - start_time
+            logging.info("Gemini request completed in %.2fs", elapsed)
+            
+            if response.status_code == 200:
+                try:
+                    result = response.json()["candidates"][0]["content"]["parts"][0]["text"]
+                    logging.info("Gemini analysis result: %.200s...", result)
+                    return result
+                except KeyError as e:
+                    error_msg = f"Gemini API response format error: {str(e)}. Full response: {response.text}"
+                    logging.error(error_msg)
+                    return error_msg
+            
+            error_msg = f"Gemini API error {response.status_code}"
+            logging.error("%s: %s", error_msg, response.text)
+            return f"{error_msg}\nResponse details: {response.text}"
+        except requests.exceptions.RequestException as e:
+            logging.error("Gemini request failed: %s", str(e))
+            return f"Gemini request failed: {str(e)}"
+    
+    def _analyze_with_openrouter(self, image_path: str, prompt: str) -> str:
+        """Analyze screenshot using OpenRouter API"""
         # Validate inputs
         if not os.path.exists(image_path):
             error_msg = f"Error: Image file not found - {image_path}"
