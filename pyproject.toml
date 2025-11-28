@@ -1,14 +1,47 @@
 [project]
 name = "wayland-mcp"
 version = "0.4.0"
-description = "Wayland MCP server (Python, uvx-compatible)"
+description = "Model Context Protocol server for Wayland desktop automation with VLM analysis, mouse/keyboard control, and action chaining"
 readme = "README.md"
-authors = [{ name = "someaka" }]
-urls = { repository = "https://github.com/someaka/wayland-mcp" }
+license = { text = "GPL-3.0" }
+authors = [{ name = "kurojs", email = "github@kurojs" }]
+maintainers = [{ name = "kurojs" }]
+keywords = [
+    "mcp",
+    "model-context-protocol",
+    "wayland",
+    "desktop-automation",
+    "ai-assistant",
+    "vlm",
+    "computer-use",
+    "screenshot",
+    "mouse-control",
+    "keyboard-automation"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Desktop Environment",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+urls = { 
+    repository = "https://github.com/kurojs/wayland-mcp",
+    homepage = "https://github.com/kurojs/wayland-mcp",
+    documentation = "https://github.com/kurojs/wayland-mcp#readme",
+    changelog = "https://github.com/kurojs/wayland-mcp/releases"
+}
 dependencies = [
-    "requests",
-    "fastmcp",
-    "Pillow"
+    "requests>=2.31.0",
+    "fastmcp>=0.1.0",
+    "Pillow>=10.0.0"
 ]
 requires-python = ">=3.8"
 
