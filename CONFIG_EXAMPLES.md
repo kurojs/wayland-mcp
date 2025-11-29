@@ -89,7 +89,7 @@ Get your key from [openrouter.ai](https://openrouter.ai):
 
 ### Alternative VLM Models
 
-You can use any vision model from OpenRouter:
+**For OpenRouter**, you can use any vision model:
 
 ```json
 "VLM_MODEL": "anthropic/claude-3.5-sonnet"
@@ -98,3 +98,22 @@ You can use any vision model from OpenRouter:
 ```
 
 Check [openrouter.ai/models](https://openrouter.ai/models) for options.
+
+**For Gemini Direct API**:
+
+```json
+{
+  "env": {
+    "GEMINI_API_KEY": "AIza...",
+    "VLM_PROVIDER": "gemini",
+    "VLM_MODEL": "gemini-2.5-flash"
+  }
+}
+```
+
+Available Gemini models:
+- `gemini-2.5-flash` (default, fastest)
+- `gemini-2.0-flash-exp` (experimental)
+- `gemini-pro-vision` (older version)
+
+Get your Gemini API key at [Google AI Studio](https://aistudio.google.com/app/apikey).
