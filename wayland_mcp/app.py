@@ -336,7 +336,7 @@ class VLMAgent:
             return error_msg
         
         # Use Gemini API
-        model = os.environ.get("VLM_MODEL", "gemini-2.0-flash-exp")
+        model = os.environ.get("VLM_MODEL", "gemini-2.5-flash")
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
         
         headers = {
