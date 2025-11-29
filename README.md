@@ -40,7 +40,8 @@ Existing Wayland screenshot and automation tools often have reliability issues. 
 
 **Visual Analysis**
 - Screenshot capture with precision ruler overlays
-- VLM-powered image analysis via OpenRouter API
+- VLM-powered image analysis via **OpenRouter** or **Google Gemini**
+- Multiple vision model support (Claude, GPT-4V, Gemini, Qwen)
 - Side-by-side image comparison and diff detection
 
 **Mouse Automation**
@@ -101,9 +102,9 @@ After setup, log out and back in for group changes to take effect.
 
 ### MCP Configuration
 
-Add to your MCP client configuration file:
+The server supports two VLM providers:
 
-**Claude Desktop** (`~/.config/Claude/claude_desktop_config.json`):
+**Option 1: OpenRouter** (multiple models via proxy)
 ```json
 {
   "mcpServers": {
@@ -112,27 +113,9 @@ Add to your MCP client configuration file:
       "args": ["wayland-mcp"],
       "env": {
         "OPENROUTER_API_KEY": "sk-or-v1-...",
-        "XDG_RUNTIME_DIR": "/run/user/1000",
-        "WAYLAND_DISPLAY": "wayland-0",
-        "XDG_SESSION_TYPE": "wayland"
-      }
-    }
-  }
-}
-```
-
-**Cline/Other** (`.roo/mcp.json`):
-```json
-{
-  "mcpServers": {
-    "wayland": {
-      "command": "uvx",
-      "args": ["wayland-mcp"],
-      "env": {
-        "OPENROUTER_API_KEY": "sk-or-v1-...",
+        "VLM_PROVIDER": "openrouter",
         "VLM_MODEL": "qwen/qwen2.5-vl-72b-instruct:free",
         "XDG_RUNTIME_DIR": "/run/user/1000",
-        "WAYLAND_MCP_PORT": "4999",
         "WAYLAND_DISPLAY": "wayland-0"
       }
     }
@@ -140,17 +123,64 @@ Add to your MCP client configuration file:
 }
 ```
 
-> **Note:** See [CONFIG_EXAMPLES.md](CONFIG_EXAMPLES.md) for more configuration examples including Cursor and alternative VLM models.
+**Option 2: Google Gemini Direct** (native API, faster)
+```json
+{
+  "mcpServers": {
+    "wayland": {
+      "command": "uvx",
+      "args": ["wayland-mcp"],
+      "env": {
+        "GEMINI_API_KEY": "AIza...",
+        "VLM_PROVIDER": "gemini",
+        "VLM_MODEL": "gemini-2.5-flash",
+        "XDG_RUNTIME_DIR": "/run/user/1000",
+        "WAYLAND_DISPLAY": "wayland-0"
+      }
+    }
+  }
+}
+```
+
+**Example for Claude Desktop** (`~/.config/Claude/claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "wayland": {
+      "command": "uvx",
+      "args": ["wayland-mcp"],
+      "env": {
+        "GEMINI_API_KEY": "AIza...",
+        "VLM_PROVIDER": "gemini",
+        "VLM_MODEL": "gemini-2.5-flash",
+        "XDG_RUNTIME_DIR": "/run/user/1000",
+        "WAYLAND_DISPLAY": "wayland-0"
+      }
+    }
+  }
+}
+```
+
+> **Note:** See [CONFIG_EXAMPLES.md](CONFIG_EXAMPLES.md) for more configuration examples including Cursor, OpenRouter models, and VLM provider options.
 
 ### Environment Variables
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `OPENROUTER_API_KEY` | OpenRouter API key for VLM | - | For VLM features |
-| `VLM_MODEL` | Vision model identifier | `qwen/qwen2.5-vl-72b-instruct:free` | No |
+| **VLM Provider Options** | | | |
+| `VLM_PROVIDER` | Vision provider: `openrouter` or `gemini` | `openrouter` | No |
+| `OPENROUTER_API_KEY` | OpenRouter API key | - | For OpenRouter |
+| `GEMINI_API_KEY` | Google Gemini API key | - | For Gemini |
+| `VLM_MODEL` | Model identifier | `qwen/qwen2.5-vl-72b-instruct:free` (OpenRouter) or `gemini-2.5-flash` (Gemini) | No |
+| **Wayland Environment** | | | |
 | `XDG_RUNTIME_DIR` | Wayland runtime directory | `/run/user/1000` | Yes |
 | `WAYLAND_DISPLAY` | Display identifier | `wayland-0` | Yes |
+| **Optional** | | | |
 | `WAYLAND_MCP_PORT` | Server listen port | `4999` | No |
+
+**Getting API Keys:**
+- OpenRouter: [openrouter.ai](https://openrouter.ai) → Keys section
+- Google Gemini: [Google AI Studio](https://aistudio.google.com/app/apikey)
 
 ### Desktop Environment Compatibility
 
