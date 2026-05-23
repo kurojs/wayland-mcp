@@ -325,6 +325,9 @@ class VLMAgent:
         deployment = os.environ.get("AZURE_DEPLOYMENT", "")
         api_version = os.environ.get("AZURE_API_VERSION", "2024-06-01")
 
+        if not endpoint or not api_key:
+            return "Error: AZURE_ENDPOINT and AZURE_API_KEY must be set"
+
         if deployment:
             url = f"{endpoint}/openai/deployments/{deployment}/chat/completions?api-version={api_version}"
         else:
@@ -337,8 +340,8 @@ class VLMAgent:
                 "role": "user",
                 "content": [
                     {"type": "text", "text": "Compare these two screenshots in detail. Focus on: 1. Application windows and their content 2. Layout and positioning differences 3. Any visual changes between them"},
-                    {"type": "image_url", "image_url": f"data:image/png;base64,{encoded_images[0]}"},
-                    {"type": "image_url", "image_url": f"data:image/png;base64,{encoded_images[1]}"},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_images[0]}", "detail": "high"}},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_images[1]}", "detail": "high"}},
                 ]
             }],
             "max_tokens": 2000
@@ -346,7 +349,10 @@ class VLMAgent:
         try:
             response = requests.post(url, headers=headers, json=payload, timeout=60)
             if response.status_code == 200:
-                return response.json()["choices"][0]["message"]["content"]
+                try:
+                    return response.json()["choices"][0]["message"]["content"]
+                except KeyError as e:
+                    return f"Azure compare response format error: {str(e)}"
             return f"Azure compare error {response.status_code}: {response.text}"
         except requests.exceptions.RequestException as e:
             return f"Azure compare request failed: {str(e)}"
@@ -479,14 +485,14 @@ class VLMAgent:
                     "role": "user",
                     "content": [
                         {"type": "text", "text": prompt},
-                        {
+                         {
                             "type": "image_url",
-                            "image_url": f"data:image/png;base64,{encoded_image}",
+                            "image_url": {"url": f"data:image/png;base64,{encoded_image}", "detail": "high"},
                         },
                     ],
                 }
             ],
-            "max_tokens": 1000,
+            "max_tokens": 2000,
         }
 
         logging.info("Sending Azure request to %s", endpoint)
