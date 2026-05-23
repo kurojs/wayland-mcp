@@ -246,59 +246,110 @@ class VLMAgent:
             except (IOError, OSError) as e:
                 logging.error("Failed to encode image %s: %s", img_path, str(e))
                 return f"Error: Failed to process image {img_path} - {str(e)}"
-        # Prepare request matching test script
+        # Dispatch based on provider
+        if self.provider == "gemini":
+            return self._compare_with_gemini(encoded_images)
+        if self.provider == "azure":
+            return self._compare_with_azure(encoded_images)
+        return self._compare_with_openrouter(encoded_images)
+
+    def _compare_with_openrouter(self, encoded_images: list) -> str:
+        """Compare two images using OpenRouter API"""
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
             "HTTP-Referer": "https://github.com/your-repo",
             "X-Title": "Wayland MCP"
         }
-        # Match the toy script's prompt structure exactly
         payload = {
-            "model": "qwen/qwen2.5-vl-72b-instruct:free",
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": "Compare these two screenshots in detail."},
-                        {"type": "text", "text": "Focus on:"},
-                        {"type": "text", "text": "1. Application windows and their content"},
-                        {"type": "text", "text": "2. Layout and positioning differences"},
-                        {"type": "text", "text": "3. Any visual changes between them"},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/png;base64,{encoded_images[0]}",
-                                "detail": "high"
-                            }
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/png;base64,{encoded_images[1]}",
-                                "detail": "high"
-                            }
-                        }
-                    ]
-                }
-            ],
+            "model": os.environ.get("VLM_MODEL", "qwen/qwen2.5-vl-72b-instruct:free"),
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Compare these two screenshots in detail."},
+                    {"type": "text", "text": "Focus on:"},
+                    {"type": "text", "text": "1. Application windows and their content"},
+                    {"type": "text", "text": "2. Layout and positioning differences"},
+                    {"type": "text", "text": "3. Any visual changes between them"},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{encoded_images[0]}", "detail": "high"}
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{encoded_images[1]}", "detail": "high"}
+                    }
+                ]
+            }],
             "max_tokens": 2000
         }
         try:
             response = requests.post(
                 "https://openrouter.ai/api/v1/chat/completions",
-                headers=headers,
-                json=payload,
-                timeout=60
+                headers=headers, json=payload, timeout=60
             )
             if response.status_code == 200:
                 return response.json()["choices"][0]["message"]["content"]
-            return (
-                f"API error: {response.status_code} - "
-                f"{response.text}"
-            )
+            return f"API error: {response.status_code} - {response.text}"
         except requests.exceptions.RequestException as e:
             return f"Request failed: {str(e)}"
+
+    def _compare_with_gemini(self, encoded_images: list) -> str:
+        """Compare two images using Gemini API"""
+        model = os.environ.get("VLM_MODEL", "gemini-2.5-flash")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        payload = {
+            "contents": [{
+                "parts": [
+                    {"text": "Compare these two screenshots in detail. Focus on: 1. Application windows and their content 2. Layout and positioning differences 3. Any visual changes between them"},
+                    {"inline_data": {"mime_type": "image/png", "data": encoded_images[0]}},
+                    {"inline_data": {"mime_type": "image/png", "data": encoded_images[1]}},
+                ]
+            }]
+        }
+        try:
+            response = requests.post(
+                f"{url}?key={self.api_key}",
+                json=payload, timeout=60
+            )
+            if response.status_code == 200:
+                return response.json()["candidates"][0]["content"]["parts"][0]["text"]
+            return f"Gemini compare error {response.status_code}: {response.text}"
+        except requests.exceptions.RequestException as e:
+            return f"Gemini compare request failed: {str(e)}"
+
+    def _compare_with_azure(self, encoded_images: list) -> str:
+        """Compare two images using Azure AI Foundry"""
+        endpoint = os.environ.get("AZURE_ENDPOINT", "")
+        api_key = self.api_key
+        deployment = os.environ.get("AZURE_DEPLOYMENT", "")
+        api_version = os.environ.get("AZURE_API_VERSION", "2024-06-01")
+
+        if deployment:
+            url = f"{endpoint}/openai/deployments/{deployment}/chat/completions?api-version={api_version}"
+        else:
+            url = f"{endpoint}/chat/completions?api-version={api_version}"
+
+        headers = {"api-key": api_key, "Content-Type": "application/json"}
+        payload = {
+            "model": os.environ.get("VLM_MODEL", "gpt-4o-mini"),
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Compare these two screenshots in detail. Focus on: 1. Application windows and their content 2. Layout and positioning differences 3. Any visual changes between them"},
+                    {"type": "image_url", "image_url": f"data:image/png;base64,{encoded_images[0]}"},
+                    {"type": "image_url", "image_url": f"data:image/png;base64,{encoded_images[1]}"},
+                ]
+            }],
+            "max_tokens": 2000
+        }
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=60)
+            if response.status_code == 200:
+                return response.json()["choices"][0]["message"]["content"]
+            return f"Azure compare error {response.status_code}: {response.text}"
+        except requests.exceptions.RequestException as e:
+            return f"Azure compare request failed: {str(e)}"
     def analyze_image(self, image_path: str, prompt: str) -> str:
         """Analyze a single image using VLM analysis"""
         return self.analyze_screenshot(image_path, prompt)
@@ -313,6 +364,8 @@ class VLMAgent:
         """
         if self.provider == "gemini":
             return self._analyze_with_gemini(image_path, prompt)
+        if self.provider == "azure":
+            return self._analyze_with_azure(image_path, prompt)
         return self._analyze_with_openrouter(image_path, prompt)
     
     def _analyze_with_gemini(self, image_path: str, prompt: str) -> str:
@@ -386,6 +439,74 @@ class VLMAgent:
             logging.error("Gemini request failed: %s", str(e))
             return f"Gemini request failed: {str(e)}"
     
+    def _analyze_with_azure(self, image_path: str, prompt: str) -> str:
+        """Analyze screenshot using Azure AI Foundry"""
+        if not os.path.exists(image_path):
+            error_msg = f"Error: Image file not found - {image_path}"
+            logging.error(error_msg)
+            return error_msg
+
+        try:
+            with open(image_path, "rb") as image_file:
+                file_size = os.path.getsize(image_path)
+                logging.info("Processing image: %s (%d bytes)", image_path, file_size)
+                encoded_image = base64.b64encode(image_file.read()).decode("utf-8")
+        except (IOError, OSError) as e:
+            return f"Error: Failed to process image - {str(e)}"
+
+        endpoint = os.environ.get("AZURE_ENDPOINT", "")
+        api_key = self.api_key
+        deployment = os.environ.get("AZURE_DEPLOYMENT", "")
+        api_version = os.environ.get("AZURE_API_VERSION", "2024-06-01")
+
+        if not endpoint or not api_key:
+            return "Error: AZURE_ENDPOINT and AZURE_API_KEY must be set"
+
+        if deployment:
+            url = f"{endpoint}/openai/deployments/{deployment}/chat/completions?api-version={api_version}"
+        else:
+            url = f"{endpoint}/chat/completions?api-version={api_version}"
+
+        headers = {
+            "api-key": api_key,
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "model": os.environ.get("VLM_MODEL", "gpt-4o-mini"),
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": f"data:image/png;base64,{encoded_image}",
+                        },
+                    ],
+                }
+            ],
+            "max_tokens": 1000,
+        }
+
+        logging.info("Sending Azure request to %s", endpoint)
+        try:
+            start_time = time.time()
+            response = requests.post(url, headers=headers, json=payload, timeout=60)
+            elapsed = time.time() - start_time
+            logging.info("Azure request completed in %.2fs", elapsed)
+
+            if response.status_code == 200:
+                try:
+                    result = response.json()["choices"][0]["message"]["content"]
+                    logging.info("Azure analysis result: %.200s...", result)
+                    return result
+                except KeyError as e:
+                    return f"Azure API response format error: {str(e)}"
+            return f"Azure API error {response.status_code}: {response.text}"
+        except requests.exceptions.RequestException as e:
+            return f"Azure request failed: {str(e)}"
+
     def _analyze_with_openrouter(self, image_path: str, prompt: str) -> str:
         """Analyze screenshot using OpenRouter API"""
         # Validate inputs

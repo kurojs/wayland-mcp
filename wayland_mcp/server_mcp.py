@@ -29,7 +29,7 @@ from wayland_mcp.keyboard_utils import KeyboardController
 from wayland_mcp.screen_utils import ScreenController
 from wayland_mcp.app import VLMAgent
 # Configuration setup
-API_KEY = os.environ.get("GEMINI_API_KEY") or os.environ.get("OPENROUTER_API_KEY", "")
+API_KEY = os.environ.get("AZURE_API_KEY") or os.environ.get("GEMINI_API_KEY") or os.environ.get("OPENROUTER_API_KEY", "")
 VLM_PROVIDER = os.environ.get("VLM_PROVIDER", "openrouter")
 
 # Debug logging
@@ -39,6 +39,9 @@ logging.info("Provider: %s", VLM_PROVIDER)
 logging.info("API Key found: %s", "Yes" if API_KEY else "No")
 if API_KEY:
     logging.info("API Key starts with: %s...", API_KEY[:15])
+if VLM_PROVIDER == "azure":
+    logging.info("Azure Endpoint: %s", os.environ.get("AZURE_ENDPOINT", "not set"))
+    logging.info("Azure Deployment: %s", os.environ.get("AZURE_DEPLOYMENT", "not set"))
 logging.info("=" * 60)
 
 # Fall back to config file if not in environment
@@ -52,10 +55,13 @@ if not API_KEY:
     try:
         with open(get_config_path(), encoding="utf-8") as f:
             config = json.load(f)
+            env_config = config["mcpServers"]["wayland-screenshot"]["env"]
             if VLM_PROVIDER == "gemini":
-                API_KEY = config["mcpServers"]["wayland-screenshot"]["env"]["GEMINI_API_KEY"]
+                API_KEY = env_config["GEMINI_API_KEY"]
+            elif VLM_PROVIDER == "azure":
+                API_KEY = env_config["AZURE_API_KEY"]
             else:
-                API_KEY = config["mcpServers"]["wayland-screenshot"]["env"]["OPENROUTER_API_KEY"]
+                API_KEY = env_config["OPENROUTER_API_KEY"]
     except (json.JSONDecodeError, KeyError, IOError) as e:
         logging.error("Failed to load API key: %s", e)
         API_KEY = ""
@@ -67,7 +73,7 @@ keyboard = KeyboardController()
 # Initialize ScreenController with lazy VLM initialization
 def get_vlm_agent():
     """Lazy initialization of VLM agent with current environment variables."""
-    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("OPENROUTER_API_KEY", "")
+    api_key = os.environ.get("AZURE_API_KEY") or os.environ.get("GEMINI_API_KEY") or os.environ.get("OPENROUTER_API_KEY", "")
     provider = os.environ.get("VLM_PROVIDER", "openrouter")
     logging.info("=" * 60)
     logging.info("VLM Configuration (lazy init):")
@@ -75,6 +81,9 @@ def get_vlm_agent():
     logging.info("API Key found: %s", "Yes" if api_key else "No")
     if api_key:
         logging.info("API Key starts with: %s...", api_key[:15])
+    if provider == "azure":
+        logging.info("Azure Endpoint: %s", os.environ.get("AZURE_ENDPOINT", "not set"))
+        logging.info("Azure Deployment: %s", os.environ.get("AZURE_DEPLOYMENT", "not set"))
     logging.info("=" * 60)
     return VLMAgent(api_key, provider=provider)
 
