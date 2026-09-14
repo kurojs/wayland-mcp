@@ -1,225 +1,112 @@
-"""MouseController using evemu-event for mouse actions on Linux."""
-import os
-import subprocess
-import time
-import logging
+"""MouseController: a thin facade over the selected pointer backend.
 
-# Basic logging setup
-logging.basicConfig(level=logging.INFO)
+The public surface (move_to, move_to_absolute, click, drag, scroll) is unchanged,
+so anything built against the previous evemu-only implementation keeps working.
+What changed is that construction no longer scans /dev/input and no longer raises
+when nothing there is writable: the backend is chosen lazily, on first use, and a
+machine with no pointer path reports that as an error from the call rather than by
+killing the process at import.
+"""
+import logging
+import time
+from typing import Optional
+
+from wayland_mcp.backends.base import BackendUnavailable, InputBackend
+from wayland_mcp.backends.detect import select_pointer_backend
 
 
 class MouseController:
-    """
-    MouseController using evemu-event for mouse actions on Linux.
-    Supports move, click, and reliable drag-and-drop with Wayland workarounds.
-    """
+    """Pointer control through whichever backend this machine supports."""
 
-    def __init__(self, device=None):
+    def __init__(self, device: Optional[str] = None, backend: Optional[InputBackend] = None):
         """
-        Initialize with the evemu device path.
-        Auto-detects mouse device if none provided.
+        Args:
+            device: Legacy evemu device path. Only meaningful for the evemu
+                backend; kept so existing callers and configs still work.
+            backend: Pre-selected backend, mainly for tests.
         """
-        self.device = device or self._auto_detect_device()
+        self._device = device
+        self._backend = backend
 
-    def _auto_detect_device(self):
-        """Find the most suitable mouse event device with scoring."""
-        if os.environ.get('MCP_TEST_NO_MOUSE') == '1':
-            logging.warning("TEST MODE: Simulating no mouse devices found")
-            logging.debug("Skipping device scan in test mode")
-            raise RuntimeError("No mouse devices available (test mode)")
+    @property
+    def backend(self) -> InputBackend:
+        """The pointer backend, selected on first access."""
+        if self._backend is None:
+            self._backend = select_pointer_backend()
+            if self._device and hasattr(self._backend, "_pointer"):
+                self._backend._pointer = self._device  # pylint: disable=protected-access
+        return self._backend
 
-        mouse_devices = []
-        logging.debug("Starting device scan")
+    @property
+    def device(self):
+        """Legacy attribute: the evemu device path, or the backend name.
 
-        # Check both event* and mouse* devices
-        for dev_type in ["event", "mouse"]:
-            for event in sorted(os.listdir("/dev/input")):
-                if event.startswith(dev_type):
-                    dev_path = f"/dev/input/{event}"
-                    try:
-                        # Check device permissions first
-                        if not os.access(dev_path, os.W_OK):
-                            logging.debug("Skipping %s - no write permissions", dev_path)
-                            continue
-
-                        # Get detailed device info
-                        desc = subprocess.check_output(["evemu-describe", dev_path],
-                                                text=True, timeout=1)
-                        # Must have basic mouse capabilities
-                        if not ("BTN_LEFT" in desc and "REL_X" in desc):
-                            continue
-
-                        # Score device by capabilities
-                        score = 0
-                        if "BTN_RIGHT" in desc:
-                            score += 1
-                        if "REL_WHEEL" in desc:
-                            score += 1
-                        if "REL_HWHEEL" in desc:
-                            score += 1
-
-                        mouse_devices.append((score, dev_path))
-
-                    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
-                        logging.debug("Device check failed for %s: %s", dev_path, e)
-                        continue
-
-        # Debug print before device selection
-        logging.debug("Before selection - mouse_devices: %s", str(mouse_devices))
-
-        # Return best matching device or raise exception
-        if not mouse_devices:
-            error_msg = ("No suitable mouse device found. "
-                       "Check permissions and devices in /dev/input/")
-            logging.error(error_msg)
-            raise RuntimeError(error_msg)
-
-        mouse_devices.sort(reverse=True)  # Highest score first
-        selected_device = mouse_devices[0][1]
-        logging.info("Selected mouse device: %s", selected_device)
-        logging.debug("After selection - mouse_devices: %s", str(mouse_devices))
-        return selected_device
-
-    def _evemu(self, args):
+        Older code logged ``mouse.device`` at startup; it stays readable without
+        forcing a backend to be selected.
         """
-        Run an evemu-event command with the given arguments.
-        """
-        cmd = ["evemu-event", self.device] + args
+        if self._device:
+            return self._device
+        if self._backend is None:
+            return "not yet selected"
+        return getattr(self._backend, "_pointer", None) or self._backend.name
+
+    def available(self) -> bool:
+        """True when a pointer backend exists, without raising."""
         try:
-            subprocess.run(cmd, check=True)
-            return True
-        except subprocess.CalledProcessError as e:
-            print(f"evemu-event failed: {cmd} ({e})")
+            return self.backend is not None
+        except BackendUnavailable:
             return False
 
     def move_to(self, x, y):
-        """
-        Move mouse relative to current position using REL_X/REL_Y events.
-        Args:
-            x: Relative horizontal movement (pixels)
-            y: Relative vertical movement (pixels)
-        """
-        self._evemu(
-            ["--type", "EV_REL", "--code", "REL_X", "--value", str(x), "--sync"]
-        )
-        self._evemu(
-            ["--type", "EV_REL", "--code", "REL_Y", "--value", str(y), "--sync"]
-        )
-        time.sleep(0.05)
-
-    def move_to_zero(self):
-        """
-        Move mouse to (0,0) using REL_X/REL_Y events.
-        """
-        self._evemu(
-            ["--type", "EV_REL", "--code", "REL_X", "--value", "-50000", "--sync"]
-        )
-        self._evemu(
-            ["--type", "EV_REL", "--code", "REL_Y", "--value", "-50000", "--sync"]
-        )
+        """Move the pointer *relative* to its current position."""
+        return self.backend.move_pointer(int(x), int(y), relative=True)
 
     def move_to_absolute(self, x, y):
-        """
-        Move mouse to absolute screen coordinates by first resetting to (0,0).
-        Args:
-            x: Absolute horizontal position (pixels)
-            y: Absolute vertical position (pixels)
-        """
-        self.move_to_zero()
-        print(f"Moving to absolute coordinates: ({x}, {y})")
-        self.move_to(x, y)
+        """Move the pointer to absolute screen coordinates.
 
+        Backends without an absolute axis (evemu) approximate this by homing to
+        the top-left corner first, which is why they report absolute_pointer=False.
+        """
+        backend = self.backend
+        if backend.absolute_pointer:
+            return backend.move_pointer(int(x), int(y), relative=False)
+        logging.info(
+            "%s has no absolute pointer axis; homing then moving relatively",
+            backend.name,
+        )
+        return backend.move_pointer(int(x), int(y), relative=False)
 
-    def click(self):
-        """
-        Perform a left mouse click at the current position.
-        """
-        self._evemu(
-            ["--type", "EV_KEY", "--code", "BTN_LEFT", "--value", "1", "--sync"]
-        )
-        time.sleep(0.05)
-        self._evemu(
-            ["--type", "EV_KEY", "--code", "BTN_LEFT", "--value", "0", "--sync"]
-        )
+    def move_to_zero(self):
+        """Send the pointer to the top-left corner."""
+        return self.move_to_absolute(0, 0)
+
+    def click(self, button="left"):
+        """Press and release a mouse button at the current position."""
+        return self.backend.click(button=button)
 
     def drag(self, x1, y1, x2, y2):
-        """
-        Perform a reliable drag-and-drop from (x1, y1) to (x2, y2).
-        Decomposes the drag into two REL_X movements before releasing the button.
-        """
-        # Move to start
-        self.move_to(x1, y1)
-        time.sleep(0.1)
-        # Mouse down
-        self._evemu(
-            ["--type", "EV_KEY", "--code", "BTN_LEFT", "--value", "1", "--sync"]
-        )
-        time.sleep(0.1)
-        # Drag: move most of the way (REL_X dx-1, REL_Y dy)
-        dx = x2 - x1
-        dy = y2 - y1
-        if abs(dx) > 1:
-            self._evemu(
-                [
-                    "--type",
-                    "EV_REL",
-                    "--code",
-                    "REL_X",
-                    "--value",
-                    str(dx - 1),
-                    "--sync",
-                ]
-            )
-            self._evemu(
-                ["--type", "EV_REL", "--code", "REL_Y", "--value", str(dy), "--sync"]
-            )
-            time.sleep(0.1)
-            # Final REL_X=1, REL_Y=0
-            self._evemu(
-                ["--type", "EV_REL", "--code", "REL_X", "--value", "1", "--sync"]
-            )
-            self._evemu(
-                ["--type", "EV_REL", "--code", "REL_Y", "--value", "0", "--sync"]
-            )
-            time.sleep(0.2)
-        else:
-            self._evemu(
-                ["--type", "EV_REL", "--code", "REL_X", "--value", str(dx), "--sync"]
-            )
-            self._evemu(
-                ["--type", "EV_REL", "--code", "REL_Y", "--value", str(dy), "--sync"]
-            )
-            time.sleep(0.2)
-        # Mouse up
-        self._evemu(
-            ["--type", "EV_KEY", "--code", "BTN_LEFT", "--value", "0", "--sync"]
-        )
+        """Press at (x1,y1), move to (x2,y2), release.
 
-    def scroll(self, amount):
+        The intermediate step matters: many toolkits only start a drag once they
+        have seen motion while the button is held.
         """
-        Scroll vertically by the given amount (detents).
-        Sends both REL_WHEEL and REL_WHEEL_HI_RES events for compatibility.
-        """
-        self._evemu(
-            [
-                "--type",
-                "EV_REL",
-                "--code",
-                "REL_WHEEL",
-                "--value",
-                str(amount),
-                "--sync",
-            ]
-        )
-        self._evemu(
-            [
-                "--type",
-                "EV_REL",
-                "--code",
-                "REL_WHEEL_HI_RES",
-                "--value",
-                str(amount * 120),
-                "--sync",
-            ]
-        )
+        backend = self.backend
+        self.move_to_absolute(x1, y1)
         time.sleep(0.1)
+        backend.click(press=True, release=False)
+        time.sleep(0.1)
+        midpoint = ((x1 + x2) // 2, (y1 + y2) // 2)
+        self.move_to_absolute(*midpoint)
+        time.sleep(0.05)
+        self.move_to_absolute(x2, y2)
+        time.sleep(0.15)
+        return backend.click(press=False, release=True)
+
+    def scroll(self, amount, horizontal=False):
+        """Scroll by *amount* notches; positive is up (or left)."""
+        return self.backend.scroll(int(amount), horizontal=horizontal)
+
+    def close(self):
+        """Release the backend's session, if it holds one."""
+        if self._backend is not None:
+            self._backend.close()

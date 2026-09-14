@@ -65,8 +65,18 @@ Existing Wayland screenshot and automation tools often have reliability issues. 
 ### Prerequisites
 
 - Python 3.8 or higher
-- Wayland compositor (GNOME, KDE Plasma, Hyprland, Sway, etc.)
-- `grim` and `slurp` for screenshots (usually pre-installed)
+- A Wayland session (GNOME, KDE Plasma, COSMIC, Hyprland, Sway, ...)
+- **No privileged setup, and no root.** See [Backends](#backends) for what each
+  path needs; the server tells you itself with the `describe_environment` tool.
+
+Recommended, though optional: PyGObject, which unlocks the XDG portal backends and
+is the only path that works on every desktop.
+
+```bash
+sudo apt install python3-gi        # Debian, Ubuntu, Pop!_OS
+sudo dnf install python3-gobject   # Fedora
+sudo pacman -S python-gobject      # Arch
+```
 
 ### Quick Install
 
@@ -74,29 +84,37 @@ Existing Wayland screenshot and automation tools often have reliability issues. 
 uvx wayland-mcp
 ```
 
+To let `uvx` see a system PyGObject, add `--system-site-packages`:
+
+```bash
+uv venv --system-site-packages && uv pip install wayland-mcp
+```
+
 ### From Source
 
 ```bash
-git clone https://github.com/kurojs/wayland-mcp.git
+git clone https://github.com/Sycatle/wayland-mcp.git
 cd wayland-mcp
-pip install -e .
+uv venv --system-site-packages
+uv pip install -e ".[dev]"
 ```
 
 ### Input Control Setup
 
-For mouse and keyboard automation, run the setup script:
+There is none. Input goes through the `org.freedesktop.portal.RemoteDesktop`
+portal, which synthesises pointer and keyboard events with no privilege at all.
+Your compositor asks for permission the first time; the returned restore token is
+kept in `$XDG_STATE_HOME/wayland-mcp/remote-desktop-token` (mode 0600) and
+replayed afterwards, so you are not asked again. Set `WAYLAND_MCP_NO_PERSIST=1`
+to be prompted every time instead.
 
-```bash
-sudo ./setup.sh
-```
-
-**What it does:**
-- Installs `evemu-tools` package
-- Configures setuid for `evemu-event`
-- Adds user to `input` group
-- Creates udev rules for device access
-
-After setup, log out and back in for group changes to take effect.
+> **If you ran the upstream `sudo ./setup.sh`, undo it.** That script made every
+> `/dev/input/event*` device world-writable and installed a udev rule
+> (`KERNEL=="event*", MODE="0666"`) to keep them that way across reboots, plus a
+> setuid bit and a NOPASSWD sudoers entry for `evemu-event`. While that rule is in
+> place, *any* local process can read your keystrokes, passwords included.
+> `scripts/legacy-evemu-setup.sh` documents the exact rollback commands. This fork
+> removed the script from the install path and needs none of it.
 
 ## Usage
 
@@ -165,32 +183,100 @@ The server supports two VLM providers:
 
 ### Environment Variables
 
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| **VLM Provider Options** | | | |
-| `VLM_PROVIDER` | Vision provider: `openrouter` or `gemini` | `openrouter` | No |
-| `OPENROUTER_API_KEY` | OpenRouter API key | - | For OpenRouter |
-| `GEMINI_API_KEY` | Google Gemini API key | - | For Gemini |
-| `VLM_MODEL` | Model identifier | `qwen/qwen2.5-vl-72b-instruct:free` (OpenRouter) or `gemini-2.5-flash` (Gemini) | No |
-| **Wayland Environment** | | | |
-| `XDG_RUNTIME_DIR` | Wayland runtime directory | `/run/user/1000` | Yes |
-| `WAYLAND_DISPLAY` | Display identifier | `wayland-0` | Yes |
-| **Optional** | | | |
-| `WAYLAND_MCP_PORT` | Server listen port | `4999` | No |
+Everything below is optional. The server starts, captures the screen and controls
+input with none of it set.
 
-**Getting API Keys:**
+| Variable | Description | Default |
+|----------|-------------|---------|
+| **Vision analysis (optional feature)** | | |
+| `VLM_PROVIDER` | `openrouter`, `gemini` or `azure` | `openrouter` |
+| `OPENROUTER_API_KEY` | OpenRouter key | - |
+| `GEMINI_API_KEY` | Google Gemini key | - |
+| `AZURE_API_KEY`, `AZURE_ENDPOINT`, `AZURE_DEPLOYMENT` | Azure AI Foundry | - |
+| `VLM_MODEL` | Model identifier | provider default |
+| `WAYLAND_MCP_CONFIG` | JSON file to read a key from, if you keep it out of the environment | - |
+| **Backend selection** | | |
+| `WAYLAND_MCP_CAPTURE_BACKEND` | Force a capture backend by name | auto |
+| `WAYLAND_MCP_INPUT_BACKEND` | Force an input backend by name | auto |
+| `WAYLAND_MCP_NO_PERSIST` | `1` to be asked for portal permission every time | unset |
+| `WAYLAND_MCP_RESTORE_TOKEN_PATH` | Where to keep the portal restore token | `$XDG_STATE_HOME/wayland-mcp/remote-desktop-token` |
+| **Behaviour** | | |
+| `WAYLAND_MCP_QUIET_CAPTURE` | `1` to silence animations and sound around a capture, restoring your settings afterwards | unset |
+| `WAYLAND_MCP_LOG` | Log file path | `/tmp/wayland-mcp.log` |
+| **Session** | | |
+| `XDG_RUNTIME_DIR`, `WAYLAND_DISPLAY`, `DBUS_SESSION_BUS_ADDRESS` | Recovered automatically when your MCP client strips them; set them explicitly if you run several compositors | auto |
+
+**Getting API keys:**
 - OpenRouter: [openrouter.ai](https://openrouter.ai) → Keys section
 - Google Gemini: [Google AI Studio](https://aistudio.google.com/app/apikey)
 
+> **MCP clients strip the environment.** The reference stdio transport passes only
+> `HOME`, `LOGNAME`, `PATH`, `SHELL`, `TERM` and `USER` to the server it launches,
+> which removes exactly what a Wayland tool needs. The server reconstructs
+> `XDG_RUNTIME_DIR`, `DBUS_SESSION_BUS_ADDRESS` and `WAYLAND_DISPLAY` from the
+> filesystem when they are missing, so no client-side configuration is required. It
+> declines to guess only when several compositor sockets are present; set
+> `WAYLAND_DISPLAY` in your client config then.
+
+### Backends
+
+Backends are chosen by *capability*, never by compositor name: the server probes
+which binaries exist and at what version, which portal interfaces are on the
+session bus, and which globals the compositor advertises, then picks the highest
+priority backend whose requirements are actually met. Call `describe_environment`
+to see what it decided and why.
+
+**Capture**, highest priority first:
+
+| Backend | Needs | Notes |
+|---------|-------|-------|
+| `cosmic-screenshot` | the binary, shipped with COSMIC | silent, no dialog; full screen only |
+| `grim` | `grim`, plus `zwlr_screencopy_manager_v1`, **or** `ext_image_copy_capture_manager_v1` with grim >= 1.5 | region capture via `slurp` |
+| `ksnip`, `gnome-screenshot`, `spectacle` | the respective binary | the upstream cascade, preserved |
+| `portal` | `org.freedesktop.portal.Screenshot` + PyGObject | works everywhere; may prompt |
+
+**Input**, highest priority first:
+
+| Backend | Needs | Pointer | Keyboard |
+|---------|-------|---------|----------|
+| `portal` | `org.freedesktop.portal.RemoteDesktop` + PyGObject | yes, absolute | yes, layout-independent |
+| `wtype` | `wtype` + `zwp_virtual_keyboard_manager_v1` | no | yes |
+| `ydotool` | `ydotool` + writable `/dev/uinput` | yes | yes, US layout only |
+| `evemu` | `evemu-event` + an **already** writable `/dev/input/event*` | approximate | yes, US layout only |
+
+`evemu` is last on purpose and is never a requirement. Nothing in this project
+changes `/dev/input` permissions.
+
 ### Desktop Environment Compatibility
 
-| Desktop | Status | Notes |
-|---------|--------|-------|
-| GNOME | ✅ Tested | Wayland by default on modern versions |
-| KDE Plasma | ✅ Tested | Enable Wayland session at login |
-| Hyprland | ✅ Tested | Native Wayland compositor |
-| Sway | ✅ Should work | i3-compatible Wayland compositor |
-| Others | ⚠️ Untested | Any wlroots-based compositor should work |
+| Desktop | Capture | Input | Notes |
+|---------|---------|-------|-------|
+| COSMIC (Pop!_OS 24.04) | ✅ `cosmic-screenshot` | ✅ `portal` | Verified end to end on `cosmic-comp 0.1`. Only implements `ext-image-copy-capture`, so a `grim` older than 1.5 cannot capture here — which is what motivated this fork. |
+| GNOME | ✅ `gnome-screenshot` or `portal` | ✅ `portal` | No `zwp_virtual_keyboard`, so `wtype` is unavailable; the portal covers it. |
+| KDE Plasma | ✅ `spectacle` or `portal` | ✅ `portal` | |
+| Hyprland, Sway, wlroots | ✅ `grim` | ⚠️ `wtype` keyboard; pointer needs `ydotool` | `xdg-desktop-portal-wlr` provides ScreenCast and Screenshot but not RemoteDesktop, so there is no portal pointer path. |
+| Others | ⚠️ falls back to `portal` | ⚠️ depends | `describe_environment` will tell you. |
+
+Only the COSMIC row was verified on hardware for this fork; the others follow from
+each backend's stated requirements and the unit tests that pin the selection, not
+from a live run.
+
+### Known limitations
+
+- **Region capture** needs `grim` + `slurp`, or a portal that offers an interactive
+  picker. `cosmic-screenshot` cannot select a region without a human, so it reports
+  that instead of blocking an MCP call.
+- **Keyboard layout**: the portal backend types by keysym and is layout
+  independent. `ydotool` and `evemu` type by *position*, so on a non-US layout they
+  produce whatever those positions mean there — asking for `ASAP 42` on AZERTY
+  gives `QSQP 'é`.
+- **cosmic-comp discards the first synthesized event** after a session starts. The
+  portal backend absorbs that with a zero-distance warm-up motion; without it, the
+  first click or keystroke of every session is silently lost.
+- **Absolute pointer positioning through the portal** needs a ScreenCast stream
+  attached to the session. Where the portal refuses one, absolute moves raise an
+  explanatory error instead of silently misplacing the cursor; use a relative
+  move, or another input backend.
 
 ### Example Commands
 
@@ -266,12 +352,17 @@ This server grants extensive control over your desktop environment:
 
 ### Permission Model
 
-The setup script requires sudo access to:
-- Install system packages (`evemu-tools`)
-- Modify file permissions
-- Configure udev rules
+No setuid binaries, no sudoers entries, no udev rules, no `input` group
+membership. The nominal path is the XDG portal: your compositor asks you once,
+mediates every event, and can revoke the grant at any time. The stored restore
+token is a capability — treat it like a credential; delete
+`$XDG_STATE_HOME/wayland-mcp/remote-desktop-token` to revoke it locally, and
+revoke the permission in your desktop settings to invalidate it entirely.
 
-After setup, the server runs with your user privileges but can control input devices through configured permissions.
+The fallback backends need more, and get chosen only when nothing better exists:
+`ydotool` wants a writable `/dev/uinput`, `evemu` a writable `/dev/input/event*`.
+The server checks whether that access already exists. It never asks for it, and it
+never widens it.
 
 ## Architecture
 
@@ -300,9 +391,9 @@ After setup, the server runs with your user privileges but can control input dev
     │  Vision  │      │  Input   │  │  │   Screen     │ │
     │          │      │ Control  │  │  │   Capture    │ │
     ├──────────┤      ├──────────┤  │  ├──────────────┤ │
-    │ • VLM    │      │ • evemu  │  │  │ • grim       │ │
-    │ • Compare│      │ • Mouse  │  │  │ • slurp      │ │
-    │          │      │ • Keyboard│  │  │ • PIL        │ │
+    │ • VLM    │      │ • portal │  │  │ • cosmic     │ │
+    │ • Compare│      │ • wtype  │  │  │ • grim/slurp │ │
+    │          │      │ • ydotool│  │  │ • portal     │ │
     └──────────┘      └──────────┘  │  └──────────────┘ │
                                     │                    │
                                     └────────────────────┘
@@ -311,24 +402,51 @@ After setup, the server runs with your user privileges but can control input dev
 
 ## Troubleshooting
 
+**Start here, whatever the symptom.** Call the `describe_environment` tool: it
+reports which binaries were found, which portal interfaces are on the bus, which
+backend was selected for capture, keyboard and pointer, and — when one is
+unavailable — exactly what each candidate would have needed.
+
+**Everything reports as unavailable when launched from an MCP client**
+- Almost always the stripped environment. The server recovers
+  `XDG_RUNTIME_DIR`, `DBUS_SESSION_BUS_ADDRESS` and `WAYLAND_DISPLAY` on its own,
+  but it refuses to guess between several compositor sockets — set
+  `WAYLAND_DISPLAY` in the `env` block of your client config.
+- Check the log (`/tmp/wayland-mcp.log`) for the line listing what it recovered.
+
 **Input control not working**
-- Ensure you ran `sudo ./setup.sh`
-- Log out and back in after setup
-- Verify you're in the `input` group: `groups | grep input`
+- No `sudo` step exists any more; if you are looking for `setup.sh`, read the
+  warning under [Input Control Setup](#input-control-setup).
+- If a permission dialog never appears and nothing happens, your desktop may have
+  no `RemoteDesktop` portal (wlroots compositors do not ship one). Install `wtype`
+  for keyboard, `ydotool` for pointer.
+- If the permission was denied once, the stored token is stale: delete
+  `$XDG_STATE_HOME/wayland-mcp/remote-desktop-token` and try again.
+- Verify against a real window rather than guessing:
+  `python scripts/verify_input.py` clicks, types and scrolls, then reads back what
+  the widgets actually received. Do not touch the machine while it runs.
 
 **Screenshots failing**
-- Check if `grim` is installed: `which grim`
-- Verify `WAYLAND_DISPLAY` matches your session: `echo $WAYLAND_DISPLAY`
+- On COSMIC, a `grim` older than 1.5 cannot work: the compositor implements only
+  `ext-image-copy-capture`. Selection already accounts for this; if you forced
+  `WAYLAND_MCP_CAPTURE_BACKEND=grim`, unset it.
+- Install a portal (`xdg-desktop-portal` plus the backend for your desktop) and
+  PyGObject for the universal fallback.
+
+**Typing produces the wrong characters**
+- You are on a non-US layout with a keycode-based backend (`ydotool`, `evemu`),
+  which types positions rather than characters. The `portal` backend types by
+  keysym and is layout independent.
 
 **VLM analysis not working**
-- Confirm `OPENROUTER_API_KEY` is set correctly
-- Check API key permissions on OpenRouter dashboard
-- Test model availability: some models have usage limits
+- Vision is optional: capture and input do not need it. The analysis tools say
+  precisely which variable to set when no provider is configured.
+- Confirm the key for the provider you selected with `VLM_PROVIDER`.
 
 **Server won't start**
-- Check Python version: `python3 --version` (needs 3.8+)
-- Verify all dependencies: `pip install -e .`
-- Look for port conflicts if using custom `WAYLAND_MCP_PORT`
+- Check Python: `python3 --version` (needs 3.8+).
+- Reinstall: `uv pip install -e ".[dev]"`, then `pytest` — the test suite runs
+  headless and does not need a graphical session.
 
 ## Contributing
 
@@ -344,17 +462,32 @@ wayland-mcp/
 │   ├── mouse_utils.py    # Mouse control functions
 │   ├── keyboard_utils.py # Keyboard input handling
 │   ├── chain_processor.py# Action chain parser
-│   └── ...
+│   ├── session_env.py    # Recovers the session vars MCP clients strip
+│   └── backends/         # Capability-selected capture and input backends
+│       ├── base.py       # Capabilities probe + backend interfaces
+│       ├── detect.py     # Selection by priority and requirements
+│       ├── portal.py     # Shared GDBus plumbing for XDG portals
+│       ├── capture_*.py  # cosmic-screenshot, grim, legacy tools, portal
+│       └── input_*.py    # portal RemoteDesktop, wtype, ydotool, evemu
+├── tests/                # Headless tests: selection, keycodes, session env
+├── scripts/
+│   ├── verify_input.py   # End-to-end input check against a real window
+│   └── legacy-evemu-setup.sh  # Documents how to undo the upstream setup.sh
+├── docs/REPRO.md         # The upstream failure this fork started from
 ├── README.md             # This file
 ├── CONFIG_EXAMPLES.md    # Configuration examples
 ├── CONTRIBUTING.md       # Contribution guidelines
-├── setup.sh              # Permission setup script
 └── pyproject.toml        # Package metadata
 ```
 
 ## License
 
-GPL-3.0 License - See [LICENSE](LICENSE) for details.
+GPL-3.0. See [LICENSE](LICENSE) for the full text.
+
+Copyright (C) 2024 wayland-mcp contributors, and contributors to this fork. This
+is a fork of [kurojs/wayland-mcp](https://github.com/kurojs/wayland-mcp), adding
+capability-based backend selection so it works on compositors the original could
+not reach — COSMIC in particular — and removing the privileged input setup.
 
 ## Acknowledgments
 

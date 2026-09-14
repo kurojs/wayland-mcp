@@ -1,5 +1,53 @@
 # Changelog
 
+
+## [Unreleased] — fork: COSMIC support and unprivileged input
+
+### Fixed
+- `pyproject.toml` was not valid TOML (`urls = {` spanned several lines), so any
+  source install failed before reaching the build backend.
+- The server raised at import: `MouseController()` and `KeyboardController()` were
+  built at module level and scanned `/dev/input`, so a machine with default
+  permissions could not start it. `wayland_mcp/__init__.py` imported
+  `server_mcp`, so even `import wayland_mcp.app` failed.
+- `execute_action` called every handler with no arguments, so all single actions
+  except a bare `click` raised an uncaught `TypeError`.
+- `grim -g "$(slurp)"` was passed to a shell-less subprocess as a literal string,
+  so region capture never worked on any compositor.
+- `type_text` lowercased its input, making capital letters impossible.
+- Capture no longer rewrites the user's GNOME animation and event-sound settings,
+  mutes the audio sink, or writes a sound-theme file at import time. That behaviour
+  is opt-in via `WAYLAND_MCP_QUIET_CAPTURE=1` and now restores the values it found.
+- The API key is no longer logged, and `~/.roo/mcp.json` is no longer read
+  silently (opt-in via `WAYLAND_MCP_CONFIG`).
+
+### Added
+- `wayland_mcp/backends/`: capture and input backends selected by probed
+  capability rather than by compositor name. Capture via `cosmic-screenshot`,
+  `grim`, `ksnip`/`gnome-screenshot`/`spectacle`, or the XDG Screenshot portal.
+  Input via the XDG RemoteDesktop portal, `wtype`, `ydotool` or `evemu`.
+- COSMIC support: `cosmic-comp` implements only `ext-image-copy-capture`, which
+  the `grim` 1.4 in current distributions cannot use.
+- `describe_environment` tool, reporting what is installed, what the compositor
+  advertises, what was selected, and what a missing backend would need.
+- `wayland_mcp/session_env.py`: recovers `XDG_RUNTIME_DIR`,
+  `DBUS_SESSION_BUS_ADDRESS` and `WAYLAND_DISPLAY`, which MCP stdio clients strip.
+- Portal permission is persisted via the `restore_token`, so the consent dialog
+  appears once per machine rather than once per server start.
+- Headless test suite (selection, keysyms, session recovery) and
+  `scripts/verify_input.py`, which verifies input against a real GTK window.
+
+### Changed
+- Input needs no privilege. `setup.sh` is removed: it made every
+  `/dev/input/event*` world-writable with a persistent udev rule, set setuid on
+  `evemu-event` and added a NOPASSWD sudoers entry. `scripts/legacy-evemu-setup.sh`
+  documents how to undo it. `evemu` remains as a last resort and activates only if
+  a device is already writable.
+- The portal backend types by keysym, so text is layout independent. Typing by
+  keycode turned `ASAP 42` into `QSQP 'é` on AZERTY.
+- `LICENSE` now contains the full GPL-3.0 text, which the licence requires be
+  distributed with the work; it previously held only the short notice.
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),

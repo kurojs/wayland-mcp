@@ -48,15 +48,18 @@ class ScreenController:
             if not isinstance(result, dict) or not result.get("success"):
                 return {
                     "success": False,
-                    "error": result.get("error", "Capture failed")
+                    "error": result.get("error", "Capture failed"),
+                    "backend": result.get("backend", "unknown"),
                 }
 
             try:
                 return {
                     "success": True,
-                    "filename": add_rulers(filename)
+                    "filename": add_rulers(filename),
+                    "backend": result.get("backend", "unknown"),
                 }
             except (OSError, IOError) as e:
+                # Rulers are a convenience; a capture without them still beats none.
                 logging.error("Failed to add rulers: %s", e)
                 return result
         except (OSError, RuntimeError) as e:
@@ -164,7 +167,8 @@ class ScreenController:
                 "success": True,
                 "filename": filename,
                 "analysis": analysis["analysis"],
-                "filesize": os.path.getsize(filename)
+                "filesize": os.path.getsize(filename),
+                "backend": result.get("backend", "unknown"),
             }
         except (OSError, RuntimeError, ValueError) as e:
             logging.error("Capture and analyze failed: %s", e)

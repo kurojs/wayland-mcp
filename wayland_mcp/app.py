@@ -1,208 +1,156 @@
 """MCP Server application for Wayland interactions.
-This module provides core functionality for the Wayland MCP server including:
-- Screenshot capture with various backends
-- Vision-Language Model (VLM) integration for image analysis
-- Mouse control utilities
-- Environment configuration for optimal capture performance
+
+This module provides:
+- screenshot capture, delegated to a capability-selected backend
+- Vision-Language Model (VLM) integration for image analysis, entirely optional
+
+The capture cascade that used to live here has moved to wayland_mcp.backends.
+Three side effects went with it: writing a silent sound theme into the user's
+data directory at import time, rewriting the user's GNOME animation and
+event-sound settings on every capture, and muting the system audio sink. They are
+now opt-in via WAYLAND_MCP_QUIET_CAPTURE=1, and the settings they touch are read
+back and restored to their real previous values instead of being forced to
+"true".
 """
 import os
-import shutil
 import subprocess
 import time
 import logging
 import base64
 import requests
-def configure_environment():
-    """Set up optimized capture environment"""
-    env = os.environ.copy()
-    env.update(
-        {
-            "LD_LIBRARY_PATH": "/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu",
-            "GTK_PATH": "",
-            "GST_PLUGIN_SYSTEM_PATH": "/usr/lib/x86_64-linux-gnu/gstreamer-1.0",
-            "PULSE_PROP_OVERRIDE": "filter.want=echo-cancel",
-        }
-    )
-    # Ensure silent sound theme exists in system or user location
-    system_sound_dir = "/usr/share/sounds/silent/stereo"
-    user_sound_dir = os.path.expanduser("~/.local/share/sounds/silent/stereo")
-    # Try system location first
-    if not os.path.exists(system_sound_dir):
-        os.makedirs(user_sound_dir, exist_ok=True)
-        sound_dir = user_sound_dir
-    else:
-        sound_dir = system_sound_dir
-    # Create silent sound file if needed
-    sound_file = os.path.join(sound_dir, "screen-capture.oga")
-    if not os.path.exists(sound_file):
-        # Create an empty file using 'with' to ensure it's closed
-        with open(sound_file, "w", encoding="utf-8") as _:  # Use _ for unused variable
-            pass  # Just create the file
-    env["SOUND_THEME"] = "silent"
-    return env
+
+from wayland_mcp.backends.base import BackendUnavailable
+from wayland_mcp.backends.detect import select_capture_backend
+
+ENV_QUIET_CAPTURE = "WAYLAND_MCP_QUIET_CAPTURE"
+
+_GSETTINGS_KEYS = (
+    ("org.gnome.desktop.interface", "enable-animations", "false"),
+    ("org.gnome.desktop.sound", "event-sounds", "false"),
+)
+
+#: Cached backend, so repeated captures do not re-probe the whole system.
+_CAPTURE_BACKEND = None
+
+
+def quiet_capture_enabled() -> bool:
+    """True when the user asked us to silence animations and sound around a capture."""
+    return os.environ.get(ENV_QUIET_CAPTURE, "").lower() in ("1", "true", "yes")
+
+
+def _gsettings_get(schema, key):
+    try:
+        result = subprocess.run(
+            ["gsettings", "get", schema, key],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def _gsettings_set(schema, key, value):
+    try:
+        subprocess.run(
+            ["gsettings", "set", schema, key, value],
+            capture_output=True, timeout=5, check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as err:
+        logging.debug("gsettings set %s %s failed: %s", schema, key, err)
+
+
 def minimize_effects():
-    """Reduce visual and sound effects"""
-    try:
-        # Reduce animations (minimizes flash)
-        subprocess.run(
-            [
-                "gsettings",
-                "set",
-                "org.gnome.desktop.interface",
-                "enable-animations",
-                "false",
-            ],
-            check=True,
-        )
-        # Disable event sounds
-        subprocess.run(
-            ["gsettings", "set", "org.gnome.desktop.sound", "event-sounds", "false"],
-            check=True,
-        )
-        time.sleep(0.3)  # Allow settings to apply
-    except subprocess.CalledProcessError as e:
-        logging.error("Error minimizing effects: %s", e)
-def restore_effects():
-    """Restore original system settings"""
-    try:
-        subprocess.run(
-            [
-                "gsettings",
-                "set",
-                "org.gnome.desktop.interface",
-                "enable-animations",
-                "true",
-            ],
-            check=True,
-        )
-        subprocess.run(
-            ["gsettings", "set", "org.gnome.desktop.sound", "event-sounds", "true"],
-            check=True,
-        )
-    except subprocess.CalledProcessError as e:
-        logging.error("Error restoring effects: %s", e)
-# pylint: disable=too-many-branches
-def capture_screenshot(output_path=None, mode="auto", geometry=None, include_mouse=True):
+    """Silence animations and sounds, returning what to restore afterwards.
+
+    Only called when WAYLAND_MCP_QUIET_CAPTURE is set. The previous values are read
+    first so restore_effects can put them back, rather than forcing them on.
     """
-    Capture screenshot with optional region selection and mouse cursor
+    previous = {}
+    for schema, key, quiet_value in _GSETTINGS_KEYS:
+        current = _gsettings_get(schema, key)
+        if current is None:
+            continue
+        previous[(schema, key)] = current
+        _gsettings_set(schema, key, quiet_value)
+    muted = _run_pactl("get-sink-mute")
+    if muted is not None:
+        previous[("pactl", "mute")] = muted
+        _run_pactl("set-sink-mute", "1")
+    return previous
+
+
+def restore_effects(previous=None):
+    """Put back exactly what minimize_effects found."""
+    if not previous:
+        return
+    for (schema, key), value in previous.items():
+        if schema == "pactl":
+            _run_pactl("set-sink-mute", "1" if "yes" in value else "0")
+        else:
+            _gsettings_set(schema, key, value)
+
+
+def _run_pactl(*args):
+    try:
+        result = subprocess.run(
+            ["pactl", *args, "@DEFAULT_SINK@"] if args[0].startswith("get")
+            else ["pactl", args[0], "@DEFAULT_SINK@", *args[1:]],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def get_capture_backend(refresh: bool = False):
+    """The selected capture backend, probing the system at most once.
+
+    Raises BackendUnavailable with a message listing what each candidate needs.
+    """
+    global _CAPTURE_BACKEND  # pylint: disable=global-statement
+    if _CAPTURE_BACKEND is None or refresh:
+        _CAPTURE_BACKEND = select_capture_backend()
+    return _CAPTURE_BACKEND
+
+
+def capture_screenshot(output_path=None, mode="auto", geometry=None, include_mouse=True):
+    """Capture the screen through the best available backend.
+
     Args:
-        output_path: Output file path
-        mode: 'auto'|'region'|'window' - Capture mode
-        geometry: Optional pre-defined geometry (x,y,w,h)
-        include_mouse: Whether to include mouse cursor in capture (default: True)
+        output_path: Output file path (defaults to ./screenshot.png)
+        mode: 'auto' | 'region' | 'window'
+        geometry: Optional pre-defined geometry "x,y WxH"
+        include_mouse: Whether to draw the cursor, when the backend can
+
     Returns:
-        dict: {'success': bool, 'filename': str, 'error': str}
+        dict: {'success': bool, 'filename': str, 'error': str, 'backend': str}
     """
     if output_path is None:
         output_path = os.path.abspath("screenshot.png")
-    logging.info("[capture_screenshot] called with silent mode")
-    env = configure_environment()
     try:
-        minimize_effects()
-        # Force mute as backup
-        subprocess.run(
-            ["pactl", "set-sink-mute", "@DEFAULT_SINK@", "1"], env=env, check=False
-        )  # Muting failure isn't critical
-        # 1. First try ksnip (if available)
-        if os.path.exists("/usr/bin/ksnip"):
-            try:
-                cmd = ["ksnip", "-f", output_path, "-m"]
-                if include_mouse:
-                    cmd.append("-c")  # Include cursor
-                result = subprocess.run(
-                    cmd,
-                    env=env,
-                    capture_output=True,
-                    timeout=15,
-                    check=False,  # Don't check, handle return code below
-                )
-                if result.returncode == 0:
-                    return {"success": True, "filename": output_path}
-            except subprocess.TimeoutExpired as e:
-                logging.error("ksnip failed: %s", e)
-        # 2. Fallback to gnome-screenshot (minimized flash)
-        try:
-            cmd = ["gnome-screenshot", "-f", output_path]
-            if include_mouse:
-                cmd.append("--include-pointer")
-            result = subprocess.run(
-                cmd,
-                env=env,
-                capture_output=True,
-                timeout=30,  # Increased timeout for slower systems
-                check=False,  # Don't check, handle return code below
-            )
-            if result.returncode == 0:
-                return {"success": True, "filename": output_path}
-        except subprocess.TimeoutExpired as e:
-            logging.error("gnome-screenshot failed: %s", e)
-        except FileNotFoundError as e:
-            logging.warning("gnome-screenshot not found: %s", e)
-        except subprocess.CalledProcessError as e:
-            logging.warning("gnome-screenshot returned error code %d: %s", e.returncode, e.stderr.decode() if e.stderr else "No stderr")
-        # Handle region/window selection
-        if mode == "region" and not geometry:
-            try:
-                if shutil.which("slurp"):
-                    result = subprocess.run(
-                        ["slurp"], capture_output=True, text=True, check=False
-                    )  # Don't check, handle return code
-                    if result.returncode == 0:
-                        geometry = result.stdout.strip()
-                elif shutil.which("xrandr"):
-                    # Basic X11 region selection fallback
-                    result = subprocess.run(
-                        ["xrandr | grep ' connected'"],
-                        shell=True,
-                        capture_output=True,
-                        check=False,
-                    )  # Don't check, handle return code
-                    # Parse output to get screen geometry (needs implementation)
-            except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError) as e:
-                logging.warning("Region selection failed: %s", e)
-        # 3. Final fallback to grim if on Wayland
-        if os.environ.get("WAYLAND_DISPLAY") and shutil.which("grim"):
-            try:
-                if include_mouse:
-                    logging.warning("Grim doesn't support cursor capture - mouse won't be visible")
-                cmd = ["grim", output_path]
-                if mode == "region" and shutil.which("slurp"):
-                    cmd = ["grim", "-g", "$(slurp)", output_path]
-                subprocess.run(
-                    cmd, env=env, check=True, timeout=20
-                )  # Increased timeout for slower systems
-                return {"success": True, "filename": output_path}
-            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
-                logging.error("Grim fallback failed: %s", e)
-            except FileNotFoundError as e:
-                logging.warning("Grim not found: %s", e)
-        # 4. Fallback to spectacle (KDE screenshot tool)
-        if shutil.which("spectacle"):
-            try:
-                cmd = ["spectacle", "--fullscreen", "--background", "--nonotify", "--output", output_path]
-                result = subprocess.run(
-                    cmd,
-                    env=env,
-                    capture_output=True,
-                    timeout=30,
-                    check=False,
-                )
-                if result.returncode == 0:
-                    return {"success": True, "filename": output_path}
-                else:
-                    logging.error("spectacle failed with return code: %d, stderr: %s", result.returncode, result.stderr.decode() if result.stderr else "No stderr")
-            except subprocess.TimeoutExpired as e:
-                logging.error("spectacle failed: %s", e)
-            except FileNotFoundError as e:
-                logging.warning("spectacle not found: %s", e)
-            except Exception as e:
-                logging.error("spectacle failed with exception: %s", e)
-        return {"success": False, "error": "All capture methods failed"}
+        backend = get_capture_backend()
+    except BackendUnavailable as err:
+        return {"success": False, "error": str(err)}
+
+    previous = minimize_effects() if quiet_capture_enabled() else None
+    try:
+        result = backend.capture(
+            output_path, mode=mode, geometry=geometry, include_mouse=include_mouse
+        )
+    except Exception as err:  # pylint: disable=broad-except
+        # A backend may fail in ways only it knows about (a portal denial, a tool
+        # crashing). Report it as data instead of breaking the MCP call.
+        logging.error("Capture backend %s raised: %s", backend.name, err)
+        result = {"success": False, "error": f"{backend.name}: {err}"}
     finally:
-        restore_effects()
-        subprocess.run(
-            ["pactl", "set-sink-mute", "@DEFAULT_SINK@", "0"], env=env, check=False
-        )  # Unmuting failure isn't critical
+        restore_effects(previous)
+
+    result.setdefault("backend", backend.name)
+    if not result.get("success"):
+        logging.error("Capture failed via %s: %s", backend.name, result.get("error"))
+    return result
+
+
 class VLMAgent:
     """Agent for interacting with Vision-Language Models (VLMs).
     Handles image analysis and comparison using VLM APIs.
@@ -539,7 +487,6 @@ class VLMAgent:
             "X-Title": "Wayland MCP",
             "Content-Type": "application/json",
         }
-        logging.info("Using API key starting with: %s...", self.api_key[:8])
         payload = {
             "model": os.environ.get(
                 "VLM_MODEL", "moonshotai/kimi-vl-a3b-thinking:free"

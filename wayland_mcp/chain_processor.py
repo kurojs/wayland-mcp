@@ -83,7 +83,7 @@ class ChainProcessor:
                 self.results.append({
                     "step": idx + 1,
                     "action": action,
-                    "success": result.get("success", False),
+                    "success": result["success"],
                     "output": result.get("output", ""),
                     "error": result.get("error", "")
                 })
@@ -115,17 +115,15 @@ class ChainProcessor:
             action: Full action string with prefix
 
         Returns:
-            Dict: Execution result with success status
+            Dict: {'success': bool, 'output': str, 'error': str}
         """
         for prefix, handler in ACTION_HANDLERS.items():
             if action.startswith(prefix):
-                return {
-                    "success": handler(action),
-                    "output": f"Executed {prefix[:-1]} action"
-                }
+                return _normalize(handler(action), prefix)
         return {
             "success": False,
-            "error": "No handler found for action"
+            "output": "",
+            "error": "No handler found for action",
         }
 
     def _critical_action(self, action: str) -> bool:
@@ -140,6 +138,28 @@ class ChainProcessor:
         # Currently all actions are considered critical
         del action  # Explicitly mark unused parameter
         return True
+
+def _normalize(result, prefix: str) -> Dict:
+    """Coerce a handler's return value into a step result.
+
+    Handlers registered by the server return dicts; the registry is public, so a
+    handler may still return a bare bool. Storing the dict itself in "success" --
+    which is what this used to do -- made every step truthy, so a failure neither
+    broke the chain nor showed up in the overall result.
+    """
+    label = prefix.rstrip(":") or prefix
+    if isinstance(result, dict):
+        return {
+            "success": bool(result.get("success", False)),
+            "output": result.get("output") or f"Executed {label} action",
+            "error": result.get("error", ""),
+        }
+    return {
+        "success": bool(result),
+        "output": f"Executed {label} action",
+        "error": "" if result else f"{label} action failed",
+    }
+
 
 def register_handler(prefix: str, handler):
     """Register an action handler for the processor.

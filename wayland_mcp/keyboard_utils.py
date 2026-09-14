@@ -1,133 +1,86 @@
-"""KeyboardController using evemu-event for keyboard input on Linux."""
-import logging
-import os
-import subprocess
-import time
-from typing import Optional, List
+"""KeyboardController: a thin facade over the selected keyboard backend.
 
-from wayland_mcp.keymap import KEY_MAP
+Same story as MouseController: the public surface (type_text, press_key,
+send_key_combo) is preserved, the /dev/input scan and the constructor-time
+RuntimeError are gone, and text is no longer lowercased on the way out -- upstream
+called ``text.lower()``, which made typing a capital letter impossible.
+"""
+from typing import List, Optional
+
+from wayland_mcp.backends.base import BackendUnavailable, InputBackend
+from wayland_mcp.backends.detect import select_keyboard_backend
+
 
 class KeyboardController:
-    """Handles keyboard input events using evemu."""
+    """Keyboard input through whichever backend this machine supports."""
 
-    def __init__(self, device: Optional[str] = None):
+    def __init__(self, device: Optional[str] = None, backend: Optional[InputBackend] = None):
         """
-        Initialize with optional keyboard device path.
-        If not provided, will auto-detect a suitable device.
-        """
-        self.device = device or self._find_keyboard_device()
-        if not self.device:
-            raise RuntimeError("No suitable keyboard device found")
-
-    def _find_keyboard_device(self) -> Optional[str]:
-        """Find a writable keyboard event device."""
-        for event in os.listdir("/dev/input"):
-            if event.startswith("event"):
-                dev_path = f"/dev/input/{event}"
-                try:
-                    desc = subprocess.check_output(
-                        ["evemu-describe", dev_path],
-                        text=True,
-                        timeout=1
-                    )
-                    if "KEY_A" in desc and "KEY_ENTER" in desc:
-                        return dev_path
-                except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-                    continue
-        return None
-
-    def _send_key(self, keycode: str, value: int = 1) -> bool:
-        """Send a key press/release event.
-
         Args:
-            keycode: Key code from KEY_MAP
-            value: 1=press, 0=release, 2=autorepeat
+            device: Legacy evemu device path, honoured only by the evemu backend.
+            backend: Pre-selected backend, mainly for tests.
         """
+        self._device = device
+        self._backend = backend
+
+    @property
+    def backend(self) -> InputBackend:
+        """The keyboard backend, selected on first access."""
+        if self._backend is None:
+            self._backend = select_keyboard_backend()
+            if self._device and hasattr(self._backend, "_keyboard"):
+                self._backend._keyboard = self._device  # pylint: disable=protected-access
+        return self._backend
+
+    @property
+    def device(self):
+        """Legacy attribute; see MouseController.device."""
+        if self._device:
+            return self._device
+        if self._backend is None:
+            return "not yet selected"
+        return getattr(self._backend, "_keyboard", None) or self._backend.name
+
+    def available(self) -> bool:
+        """True when a keyboard backend exists, without raising."""
         try:
-            subprocess.run([
-                "evemu-event", self.device,
-                "--type", "EV_KEY",
-                "--code", keycode,
-                "--value", str(value)
-            ], check=True)
-            subprocess.run([
-                "evemu-event", self.device,
-                "--type", "EV_SYN",
-                "--code", "SYN_REPORT",
-                "--value", "0"
-            ], check=True)
-            return True
-        except subprocess.CalledProcessError as e:
-            logging.error("Key event failed: %s", e)
-            return False
-
-    def send_key_combo(self, keys: List[str]) -> bool:
-        """Send a key combination with proper press/release sequence."""
-        try:
-            # Press all modifier keys first
-            for key in keys[:-1]:
-                if not self._send_key(key, 1):
-                    return False
-
-            # Press and release main key
-            if not self._send_key(keys[-1], 1):
-                return False
-            if not self._send_key(keys[-1], 0):
-                return False
-
-            # Release all modifier keys
-            for key in reversed(keys[:-1]):
-                if not self._send_key(key, 0):
-                    return False
-
-            return True
-        except (RuntimeError, subprocess.CalledProcessError) as e:
-            logging.error("Key combo failed: %s", e)
-            # Emergency key release
-            for key in keys[:-1]:
-                self._send_key(key, 0)
+            return self.backend is not None
+        except BackendUnavailable:
             return False
 
     def type_text(self, text: str) -> bool:
-        """Type out text character by character with proper key release."""
-        try:
-            for char in text.lower():
-                if not (keycode := KEY_MAP.get(char)):
-                    continue
-                # Press key
-                if not self._send_key(keycode, 1):
-                    return False
-                time.sleep(0.05)
-                # Release key
-                if not self._send_key(keycode, 0):
-                    return False
-                time.sleep(0.01)
-            return True
-        except (RuntimeError, subprocess.CalledProcessError) as e:
-            logging.error("Typing failed: %s", str(e))
-            # Emergency key release
-            for char in text.lower():
-                if keycode := KEY_MAP.get(char):
-                    self._send_key(keycode, 0)
-            return False
+        """Type *text* as-is, case included."""
+        return self.backend.type_text(text)
 
     def press_key(self, key: str) -> bool:
-        """Press a single key or key combination.
+        """Press a key or a combination such as ``"ctrl+shift+t"``."""
+        return self.backend.press_key(key)
 
-        Args:
-            key: Key name or combination (e.g. "a" or "ctrl+a")
+    def send_key_combo(self, keys: List[str]) -> bool:
+        """Press a combination given as a list.
+
+        Accepts both plain names (``["ctrl", "a"]``) and the ``KEY_*`` spellings
+        the evemu-era API used (``["KEY_LEFTCTRL", "KEY_A"]``).
         """
-        if '+' in key:
-            keys = []
-            for k in key.split('+'):
-                if not (code := KEY_MAP.get(k.lower())):
-                    logging.error("Unknown key: %s", k)
-                    return False
-                keys.append(code)
-            return self.send_key_combo(keys)
+        return self.press_key("+".join(_plain(key) for key in keys))
 
-        if not (code := KEY_MAP.get(key.lower())):
-            logging.error("Unknown key: %s", key)
-            return False
+    def close(self):
+        """Release the backend's session, if it holds one."""
+        if self._backend is not None:
+            self._backend.close()
 
-        return self._send_key(code, 1) and self._send_key(code, 0)
+
+_KEY_PREFIX_ALIASES = {
+    "leftctrl": "ctrl", "rightctrl": "ctrl",
+    "leftshift": "shift", "rightshift": "shift",
+    "leftalt": "alt", "rightalt": "alt",
+    "leftmeta": "super", "rightmeta": "super",
+}
+
+
+def _plain(key: str) -> str:
+    """Turn ``KEY_LEFTCTRL`` into ``ctrl``; leave anything else alone."""
+    if not key.startswith("KEY_"):
+        return key
+    name = key[4:].lower()
+    return _KEY_PREFIX_ALIASES.get(name, name)
