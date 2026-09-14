@@ -9,7 +9,7 @@ Location: `~/.config/Claude/claude_desktop_config.json`
   "mcpServers": {
     "wayland": {
       "command": "uvx",
-      "args": ["wayland-mcp"],
+      "args": ["--from", "git+https://github.com/kurojs/wayland-mcp", "wayland-mcp"],
       "env": {
         "OPENROUTER_API_KEY": "sk-or-v1-your-key-here",
         "VLM_MODEL": "qwen/qwen2.5-vl-72b-instruct:free",
@@ -31,7 +31,7 @@ Location: `.roo/mcp.json` in your workspace
   "mcpServers": {
     "wayland": {
       "command": "uvx",
-      "args": ["wayland-mcp"],
+      "args": ["--from", "git+https://github.com/kurojs/wayland-mcp", "wayland-mcp"],
       "env": {
         "OPENROUTER_API_KEY": "sk-or-v1-your-key-here",
         "VLM_MODEL": "qwen/qwen2.5-vl-72b-instruct:free",
@@ -53,7 +53,7 @@ Location: `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` (project)
   "mcpServers": {
     "wayland": {
       "command": "uvx",
-      "args": ["wayland-mcp"],
+      "args": ["--from", "git+https://github.com/kurojs/wayland-mcp", "wayland-mcp"],
       "env": {
         "OPENROUTER_API_KEY": "sk-or-v1-your-key-here",
         "XDG_RUNTIME_DIR": "/run/user/1000",

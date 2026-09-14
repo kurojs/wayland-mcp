@@ -94,13 +94,17 @@ sudo pacman -S python-gobject      # Arch
 ### Quick install
 
 ```bash
-uvx wayland-mcp
+uvx "wayland-mcp @ git+https://github.com/kurojs/wayland-mcp"
 ```
 
-To let `uvx` see a system PyGObject, add `--system-site-packages`:
+The `wayland-mcp` project on PyPI is an older upstream build; installing from
+this repository runs the current release. To let the ephemeral environment see
+a system PyGObject, use a virtual environment that keeps system packages
+visible:
 
 ```bash
-uv venv --system-site-packages && uv pip install wayland-mcp
+uv venv --system-site-packages
+uv pip install "wayland-mcp @ git+https://github.com/kurojs/wayland-mcp"
 ```
 
 ### From source
@@ -142,7 +146,7 @@ The server supports two VLM providers.
   "mcpServers": {
     "wayland": {
       "command": "uvx",
-      "args": ["wayland-mcp"],
+      "args": ["--from", "git+https://github.com/kurojs/wayland-mcp", "wayland-mcp"],
       "env": {
         "OPENROUTER_API_KEY": "sk-or-v1-...",
         "VLM_PROVIDER": "openrouter",
@@ -162,7 +166,7 @@ The server supports two VLM providers.
   "mcpServers": {
     "wayland": {
       "command": "uvx",
-      "args": ["wayland-mcp"],
+      "args": ["--from", "git+https://github.com/kurojs/wayland-mcp", "wayland-mcp"],
       "env": {
         "GEMINI_API_KEY": "AIza...",
         "VLM_PROVIDER": "gemini",
@@ -182,7 +186,7 @@ The server supports two VLM providers.
   "mcpServers": {
     "wayland": {
       "command": "uvx",
-      "args": ["wayland-mcp"],
+      "args": ["--from", "git+https://github.com/kurojs/wayland-mcp", "wayland-mcp"],
       "env": {
         "GEMINI_API_KEY": "AIza...",
         "VLM_PROVIDER": "gemini",
