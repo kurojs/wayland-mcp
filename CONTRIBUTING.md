@@ -6,7 +6,7 @@ Thank you for your interest in contributing! This document provides guidelines f
 
 1. Fork and clone the repository
 ```bash
-git clone https://github.com/YOUR_USERNAME/wayland-mcp.git
+gh repo fork kurojs/wayland-mcp --clone
 cd wayland-mcp
 ```
 

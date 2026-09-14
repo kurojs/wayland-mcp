@@ -4,7 +4,7 @@
 
 <strong>Model Context Protocol server for Wayland desktop automation</strong>
 
-<br><br>
+<br>
 
 <a href="https://pypi.org/project/wayland-mcp-kurojs/"><img src="https://img.shields.io/pypi/v/wayland-mcp-kurojs?style=flat-square&logo=pypi&logoColor=white&color=3775A9" alt="PyPI Version"></a>
 <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.8%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.8+"></a>
@@ -12,7 +12,7 @@
 <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-compatible-3DDC84?style=flat-square" alt="MCP Compatible"></a>
 <a href="README.md"><img src="https://img.shields.io/badge/platform-Linux%20%7C%20Wayland-lightgrey?style=flat-square" alt="Platform Linux/Wayland"></a>
 
-<br><br>
+<br>
 
 <a href="#features">Features</a> &nbsp;•&nbsp; <a href="#installation">Installation</a> &nbsp;•&nbsp; <a href="#usage">Usage</a> &nbsp;•&nbsp; <a href="#available-tools">API</a> &nbsp;•&nbsp; <a href="#security">Security</a>
 
@@ -216,9 +216,6 @@ The server supports two VLM providers.
   }
 }
 ```
-
-> See [CONFIG_EXAMPLES.md](CONFIG_EXAMPLES.md) for more configuration examples,
-> including Cursor, OpenRouter models, and VLM provider options.
 
 ### Environment variables
 
@@ -528,9 +525,7 @@ wayland-mcp/
 ├── scripts/
 │   ├── verify_input.py     # End-to-end input check against a real window
 │   └── legacy-evemu-setup.sh  # Documents how to undo the upstream setup.sh
-├── CHANGELOG.md            # Release history
 ├── README.md               # This file
-├── CONFIG_EXAMPLES.md      # Configuration examples
 ├── CONTRIBUTING.md         # Contribution guidelines
 └── pyproject.toml          # Package metadata
 ```
