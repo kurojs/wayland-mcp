@@ -1,20 +1,24 @@
-# Wayland MCP Server
-
 <div align="center">
 
-[![License: GPL3](https://img.shields.io/badge/license-GPL3-blue.svg)](LICENSE)
-[![PyPI](https://img.shields.io/pypi/v/wayland-mcp-kurojs.svg)](https://pypi.org/project/wayland-mcp-kurojs/)
-[![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![MCP](https://img.shields.io/badge/MCP-compatible-green.svg)](https://modelcontextprotocol.io)
-![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Wayland-lightgrey.svg)
+<h1>Wayland MCP Server</h1>
 
-**Model Context Protocol server for Wayland desktop automation**
+<strong>Model Context Protocol server for Wayland desktop automation</strong>
 
-[Features](#features) • [Installation](#installation) • [Usage](#usage) • [API](#available-tools) • [Security](#security)
+<br><br>
 
----
+<a href="https://pypi.org/project/wayland-mcp-kurojs/"><img src="https://img.shields.io/pypi/v/wayland-mcp-kurojs?style=flat-square&logo=pypi&logoColor=white&color=3775A9" alt="PyPI Version"></a>
+<a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.8%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.8+"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-A42E2B?style=flat-square&logo=gnu&logoColor=white" alt="License GPL-3.0"></a>
+<a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-compatible-3DDC84?style=flat-square" alt="MCP Compatible"></a>
+<a href="README.md"><img src="https://img.shields.io/badge/platform-Linux%20%7C%20Wayland-lightgrey?style=flat-square" alt="Platform Linux/Wayland"></a>
+
+<br><br>
+
+<a href="#features">Features</a> &nbsp;•&nbsp; <a href="#installation">Installation</a> &nbsp;•&nbsp; <a href="#usage">Usage</a> &nbsp;•&nbsp; <a href="#available-tools">API</a> &nbsp;•&nbsp; <a href="#security">Security</a>
 
 </div>
+
+---
 
 ## Overview
 
@@ -536,15 +540,3 @@ wayland-mcp/
 GPL-3.0. See [LICENSE](LICENSE) for the full text.
 
 Copyright (C) 2026 wayland-mcp contributors.
-
-## Acknowledgments
-
-- Built on the [Model Context Protocol](https://modelcontextprotocol.io)
-- Uses [FastMCP](https://github.com/jlowin/fastmcp) for the server implementation
-- Inspired by the need for reliable Wayland automation tools
-
----
-
-<div align="center">
-Made for the Wayland desktop environment
-</div>
