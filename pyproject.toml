@@ -1,5 +1,5 @@
 [project]
-name = "wayland-mcp"
+name = "wayland-mcp-kurojs"
 version = "0.5.0"
 description = "Model Context Protocol server for Wayland desktop automation with VLM analysis, mouse/keyboard control, and action chaining"
 readme = "README.md"
@@ -55,6 +55,7 @@ documentation = "https://github.com/kurojs/wayland-mcp#readme"
 changelog = "https://github.com/kurojs/wayland-mcp/releases"
 
 [project.scripts]
+wayland-mcp-kurojs = "wayland_mcp.server_mcp:main"
 wayland-mcp = "wayland_mcp.server_mcp:main"
 
 [tool.hatch.build.targets.wheel]

@@ -94,17 +94,24 @@ sudo pacman -S python-gobject      # Arch
 ### Quick install
 
 ```bash
-uvx "wayland-mcp @ git+https://github.com/kurojs/wayland-mcp"
+uvx wayland-mcp-kurojs
 ```
 
-The `wayland-mcp` project on PyPI is an older upstream build; installing from
-this repository runs the current release. To let the ephemeral environment see
+To run the very latest main instead of the released build, install from this
+repository:
+
+```bash
+uvx "wayland-mcp-kurojs @ git+https://github.com/kurojs/wayland-mcp"
+```
+
+The `wayland-mcp` name on PyPI belongs to an older upstream build; this project
+publishes as `wayland-mcp-kurojs`. To let the ephemeral environment see
 a system PyGObject, use a virtual environment that keeps system packages
 visible:
 
 ```bash
 uv venv --system-site-packages
-uv pip install "wayland-mcp @ git+https://github.com/kurojs/wayland-mcp"
+uv pip install "wayland-mcp-kurojs @ git+https://github.com/kurojs/wayland-mcp"
 ```
 
 ### From source
@@ -146,7 +153,7 @@ The server supports two VLM providers.
   "mcpServers": {
     "wayland": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/kurojs/wayland-mcp", "wayland-mcp"],
+      "args": ["wayland-mcp-kurojs"],
       "env": {
         "OPENROUTER_API_KEY": "sk-or-v1-...",
         "VLM_PROVIDER": "openrouter",
@@ -166,7 +173,7 @@ The server supports two VLM providers.
   "mcpServers": {
     "wayland": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/kurojs/wayland-mcp", "wayland-mcp"],
+      "args": ["wayland-mcp-kurojs"],
       "env": {
         "GEMINI_API_KEY": "AIza...",
         "VLM_PROVIDER": "gemini",
@@ -186,7 +193,7 @@ The server supports two VLM providers.
   "mcpServers": {
     "wayland": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/kurojs/wayland-mcp", "wayland-mcp"],
+      "args": ["wayland-mcp-kurojs"],
       "env": {
         "GEMINI_API_KEY": "AIza...",
         "VLM_PROVIDER": "gemini",
