@@ -3,6 +3,7 @@
 <div align="center">
 
 [![License: GPL3](https://img.shields.io/badge/license-GPL3-blue.svg)](LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/wayland-mcp-kurojs.svg)](https://pypi.org/project/wayland-mcp-kurojs/)
 [![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-compatible-green.svg)](https://modelcontextprotocol.io)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Wayland-lightgrey.svg)
@@ -95,6 +96,12 @@ sudo pacman -S python-gobject      # Arch
 
 ```bash
 uvx wayland-mcp-kurojs
+```
+
+With pip, into any environment:
+
+```bash
+pip install wayland-mcp-kurojs
 ```
 
 To run the very latest main instead of the released build, install from this

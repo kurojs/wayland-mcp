@@ -45,6 +45,9 @@
   `scripts/verify_input.py`, which verifies input against a real GTK window.
 
 ### Changed
+- The distribution is published to PyPI as `wayland-mcp-kurojs`, because the
+  `wayland-mcp` name belongs to an older upstream build. The `wayland-mcp`
+  console script remains as an alias.
 - Input needs no privilege. `setup.sh` is removed: it made every
   `/dev/input/event*` world-writable with a persistent udev rule, set setuid on
   `evemu-event` and added a NOPASSWD sudoers entry. `scripts/legacy-evemu-setup.sh`
