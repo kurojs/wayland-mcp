@@ -1,10 +1,10 @@
 [project]
 name = "wayland-mcp"
-version = "0.4.0"
+version = "0.5.0"
 description = "Model Context Protocol server for Wayland desktop automation with VLM analysis, mouse/keyboard control, and action chaining"
 readme = "README.md"
 license = { text = "GPL-3.0" }
-authors = [{ name = "kurojs", email = "github@kurojs" }]
+authors = [{ name = "kurojs" }]
 maintainers = [{ name = "kurojs" }]
 keywords = [
     "mcp",
@@ -49,10 +49,10 @@ portal = ["PyGObject>=3.42"]
 dev = ["pytest>=7.0"]
 
 [project.urls]
-repository = "https://github.com/Sycatle/wayland-mcp"
-homepage = "https://github.com/Sycatle/wayland-mcp"
-documentation = "https://github.com/Sycatle/wayland-mcp#readme"
-changelog = "https://github.com/Sycatle/wayland-mcp/releases"
+repository = "https://github.com/kurojs/wayland-mcp"
+homepage = "https://github.com/kurojs/wayland-mcp"
+documentation = "https://github.com/kurojs/wayland-mcp#readme"
+changelog = "https://github.com/kurojs/wayland-mcp/releases"
 
 [project.scripts]
 wayland-mcp = "wayland_mcp.server_mcp:main"

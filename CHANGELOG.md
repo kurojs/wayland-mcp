@@ -1,7 +1,7 @@
 # Changelog
 
 
-## [Unreleased] — fork: COSMIC support and unprivileged input
+## [0.5.0] - 2026-09-13
 
 ### Fixed
 - `pyproject.toml` was not valid TOML (`urls = {` spanned several lines), so any
@@ -20,6 +20,13 @@
   is opt-in via `WAYLAND_MCP_QUIET_CAPTURE=1` and now restores the values it found.
 - The API key is no longer logged, and `~/.roo/mcp.json` is no longer read
   silently (opt-in via `WAYLAND_MCP_CONFIG`).
+- An `import time` dropped during the refactor crashed every VLM analysis call
+  with an uncaught `NameError`; the import is restored.
+- The first 8 characters of the API key were still written to the log on every
+  analysis; the log line is removed, so the promise above is now true.
+- `## Usage## Usage` heading typo fixed, and the README's absolute-pointer
+  limitation now matches the code: a refused ScreenCast stream raises an
+  explanatory error instead of moving relatively.
 
 ### Added
 - `wayland_mcp/backends/`: capture and input backends selected by probed
@@ -47,6 +54,10 @@
   keycode turned `ASAP 42` into `QSQP 'é` on AZERTY.
 - `LICENSE` now contains the full GPL-3.0 text, which the licence requires be
   distributed with the work; it previously held only the short notice.
+
+### Removed
+- `docs/FORK-REPORT.md` and `docs/REPRO.md`, fork-era documentation written in
+  French, so the repository keeps a single language.
 
 All notable changes to this project will be documented in this file.
 
