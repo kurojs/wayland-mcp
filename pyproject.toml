@@ -1,6 +1,6 @@
 [project]
 name = "wayland-mcp-kurojs"
-version = "0.5.0"
+version = "0.5.1"
 description = "Model Context Protocol server for Wayland desktop automation with VLM analysis, mouse/keyboard control, and action chaining"
 readme = "README.md"
 license = { text = "GPL-3.0" }
