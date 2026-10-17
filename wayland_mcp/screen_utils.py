@@ -53,11 +53,15 @@ class ScreenController:
                 }
 
             try:
-                return {
+                response = {
                     "success": True,
                     "filename": add_rulers(filename),
                     "backend": result.get("backend", "unknown"),
                 }
+                # Whether the pointer is drawn in the image, when the backend knows.
+                if "cursor" in result:
+                    response["cursor"] = result["cursor"]
+                return response
             except (OSError, IOError) as e:
                 # Rulers are a convenience; a capture without them still beats none.
                 logging.error("Failed to add rulers: %s", e)

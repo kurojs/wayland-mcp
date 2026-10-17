@@ -105,6 +105,14 @@ def forget_restore_token() -> None:
         pass
 
 
+class SessionRefused(portal.PortalError):
+    """The portal would not create a session at all.
+
+    GNOME does this while the screen is locked. It says nothing about the restore
+    token, which is only presented later, and it usually passes.
+    """
+
+
 class PortalRemoteDesktopBackend(InputBackend):
     """A persistent RemoteDesktop session, started on first use."""
 
@@ -118,7 +126,8 @@ class PortalRemoteDesktopBackend(InputBackend):
         "plus PyGObject (install the 'portal' extra, or python3-gi)"
     )
 
-    def __init__(self):
+    def __init__(self, allow_prompt: bool = True):
+        self._allow_prompt = allow_prompt
         self._session = None
         self._handle = None
         self._stream = None
@@ -138,14 +147,23 @@ class PortalRemoteDesktopBackend(InputBackend):
         A stored restore token can go stale -- the user revoked the permission, the
         compositor restarted, the token rotated out. That must not be fatal, so a
         failure with a token in hand is retried once without it, which falls back
-        to asking the user.
+        to asking the user. A session the portal refuses to create is not such a
+        failure: the token was never presented, so it is kept.
+
+        A caller that must not raise a consent dialog passes ``allow_prompt=False``
+        -- capture wants a cursor in a screenshot, which is not worth a
+        remote-control dialog, and definitely not worth the permission on the
+        machine. Such a caller is given the refusal instead, and the stored token is
+        left where it is, so the caller that does need the permission still has it.
         """
         if self._handle is not None:
             return
         try:
             self._open_session()
+        except SessionRefused:
+            raise
         except portal.PortalError:
-            if not self._restore_token:
+            if not self._restore_token or not self._allow_prompt:
                 raise
             logging.warning(
                 "The stored portal token was refused; asking for permission again"
@@ -166,15 +184,18 @@ class PortalRemoteDesktopBackend(InputBackend):
         self._session = portal.PortalSession()
 
         create_token = portal.token()
-        results = self._session.request(
-            IFACE_REMOTE_DESKTOP,
-            "CreateSession",
-            GLib.Variant("(a{sv})", ({
-                "handle_token": GLib.Variant("s", create_token),
-                "session_handle_token": GLib.Variant("s", portal.token()),
-            },)),
-            create_token,
-        )
+        try:
+            results = self._session.request(
+                IFACE_REMOTE_DESKTOP,
+                "CreateSession",
+                GLib.Variant("(a{sv})", ({
+                    "handle_token": GLib.Variant("s", create_token),
+                    "session_handle_token": GLib.Variant("s", portal.token()),
+                },)),
+                create_token,
+            )
+        except portal.PortalError as err:
+            raise SessionRefused(f"{err} (is the screen locked?)") from err
         self._handle = results["session_handle"]
 
         select_token = portal.token()
@@ -274,6 +295,25 @@ class PortalRemoteDesktopBackend(InputBackend):
             if size:
                 self._screen = (int(size[0]), int(size[1]))
             return
+
+    def open_stream(self):
+        """Open a PipeWire connection to this session's screen stream.
+
+        Returns ``(fd, node_id)``. The stream was requested with an embedded
+        cursor, so its frames show the pointer -- which the Screenshot portal's
+        never do. The caller owns the descriptor and must close it.
+        """
+        self._ensure_session()
+        if self._stream is None:
+            raise portal.PortalError("the portal granted no screen stream for this session")
+        from gi.repository import GLib  # pylint: disable=import-outside-toplevel
+
+        fd = self._session.call_for_fd(
+            IFACE_SCREENCAST,
+            "OpenPipeWireRemote",
+            GLib.Variant("(oa{sv})", (self._handle, {})),
+        )
+        return fd, self._stream
 
     def close(self):
         if self._handle and self._session:
