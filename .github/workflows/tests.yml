@@ -1,0 +1,30 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    name: pytest (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.8 is the floor pyproject.toml promises; 3.12 is a current release.
+        python-version: ["3.8", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      # The suite is headless by design -- no compositor, no D-Bus, no
+      # /dev/input -- so there is nothing to install but pytest itself.
+      - name: Install pytest
+        run: python -m pip install --upgrade pip pytest
+      - name: Run the suite
+        run: python -m pytest -q
