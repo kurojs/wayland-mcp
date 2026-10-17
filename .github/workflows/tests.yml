@@ -23,8 +23,11 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       # The suite is headless by design -- no compositor, no D-Bus, no
-      # /dev/input -- so there is nothing to install but pytest itself.
-      - name: Install pytest
-        run: python -m pip install --upgrade pip pytest
+      # /dev/input -- so the portal extra is not needed here. The core
+      # dependencies still are: the package imports requests at module level.
+      - name: Install the package and the test runner
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
       - name: Run the suite
         run: python -m pytest -q
