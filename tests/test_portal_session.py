@@ -51,6 +51,23 @@ def test_a_rejected_token_is_forgotten_and_the_user_asked_again(stored_token):
     assert not stored_token.exists()
 
 
+def test_a_caller_that_may_not_prompt_keeps_the_token(stored_token):
+    """A capture gets the refusal instead of a dialog, and the token survives."""
+    backend = PortalRemoteDesktopBackend(allow_prompt=False)
+    attempts = []
+
+    def open_session():
+        attempts.append(backend._restore_token)  # pylint: disable=protected-access
+        raise portal.PortalError("bad token")
+
+    backend._open_session = open_session  # pylint: disable=protected-access
+    with pytest.raises(portal.PortalError):
+        backend._ensure_session()  # pylint: disable=protected-access
+    # One attempt only: a second, tokenless one is what would raise the dialog.
+    assert attempts == ["stored-token"]
+    assert stored_token.read_text() == "stored-token"
+
+
 def test_a_failed_create_session_is_reported_as_refused(stored_token, monkeypatch):
     pytest.importorskip("gi.repository.GLib")
 

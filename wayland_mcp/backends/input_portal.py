@@ -126,7 +126,8 @@ class PortalRemoteDesktopBackend(InputBackend):
         "plus PyGObject (install the 'portal' extra, or python3-gi)"
     )
 
-    def __init__(self):
+    def __init__(self, allow_prompt: bool = True):
+        self._allow_prompt = allow_prompt
         self._session = None
         self._handle = None
         self._stream = None
@@ -148,6 +149,12 @@ class PortalRemoteDesktopBackend(InputBackend):
         failure with a token in hand is retried once without it, which falls back
         to asking the user. A session the portal refuses to create is not such a
         failure: the token was never presented, so it is kept.
+
+        A caller that must not raise a consent dialog passes ``allow_prompt=False``
+        -- capture wants a cursor in a screenshot, which is not worth a
+        remote-control dialog, and definitely not worth the permission on the
+        machine. Such a caller is given the refusal instead, and the stored token is
+        left where it is, so the caller that does need the permission still has it.
         """
         if self._handle is not None:
             return
@@ -156,7 +163,7 @@ class PortalRemoteDesktopBackend(InputBackend):
         except SessionRefused:
             raise
         except portal.PortalError:
-            if not self._restore_token:
+            if not self._restore_token or not self._allow_prompt:
                 raise
             logging.warning(
                 "The stored portal token was refused; asking for permission again"
