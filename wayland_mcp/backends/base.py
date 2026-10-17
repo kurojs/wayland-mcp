@@ -215,6 +215,9 @@ class CaptureBackend(Backend):
         """Return ``{"success": bool, "filename": str, "error": str}``."""
         raise NotImplementedError
 
+    def close(self) -> None:
+        """Release any session held by this backend."""
+
 
 class InputBackend(Backend):
     """Synthesises pointer and/or keyboard events."""

@@ -96,8 +96,9 @@ sudo dnf install python3-gobject   # Fedora
 sudo pacman -S python-gobject      # Arch
 ```
 
-For the cursor to appear in `portal` screenshots, also install GStreamer's
-PipeWire source and its introspection data, e.g.
+The `portal` capture backend works without GStreamer. These packages are only
+needed for the cursor in `portal` screenshots: GStreamer's PipeWire source and its
+introspection data, e.g.
 `sudo apt install gstreamer1.0-pipewire gir1.2-gstreamer-1.0` on Debian and Ubuntu.
 
 ### Quick install
@@ -239,6 +240,7 @@ controls input with none of it set.
 | `WAYLAND_MCP_CAPTURE_BACKEND` | Force a capture backend by name | auto |
 | `WAYLAND_MCP_INPUT_BACKEND` | Force an input backend by name | auto |
 | `WAYLAND_MCP_NO_PERSIST` | `1` to be asked for portal permission every time | unset |
+| `WAYLAND_MCP_CURSOR_STREAM` | `1` to try the ScreenCast stream for the cursor without a stored permission, which may prompt; `0` to never use it | unset: only with a stored permission |
 | `WAYLAND_MCP_RESTORE_TOKEN_PATH` | Where to keep the portal restore token | `$XDG_STATE_HOME/wayland-mcp/remote-desktop-token` |
 | **Behaviour** | | |
 | `WAYLAND_MCP_QUIET_CAPTURE` | `1` to silence animations and sound around a capture, restoring your settings afterwards | unset |
@@ -274,7 +276,7 @@ to see what it decided and why.
 | `cosmic-screenshot` | the binary, shipped with COSMIC | silent, no dialog; full screen only |
 | `grim` | `grim`, plus `zwlr_screencopy_manager_v1`, **or** `ext_image_copy_capture_manager_v1` with grim >= 1.5 | region capture via `slurp` |
 | `ksnip`, `gnome-screenshot`, `spectacle` | the respective binary | the upstream cascade, preserved |
-| `portal` | `org.freedesktop.portal.Screenshot` + PyGObject | works everywhere; may prompt. Draws the cursor when GStreamer's `pipewiresrc` is present (see below) |
+| `portal` | `org.freedesktop.portal.Screenshot` + PyGObject | works everywhere; may prompt. Draws the cursor from a ScreenCast stream when a portal permission is already stored, and the `cursor` field of the result says which path produced the image (see below) |
 
 **Input**, highest priority first:
 
@@ -322,11 +324,14 @@ from a live run.
   option, and GNOME leaves the pointer out. With `include_mouse` (the default) the
   `portal` capture backend therefore takes the frame from a RemoteDesktop
   session's ScreenCast stream, which embeds the cursor. It needs GStreamer's
-  `pipewiresrc`, and reuses the input backend's restore token. Without it, or once
-  the stream fails (for instance because you stopped the share), capture falls
-  back to the Screenshot portal for the rest of the process. A locked screen,
-  where GNOME refuses new sessions, only costs the cursor of that one capture.
-  The `cursor` field of the result says which one you got.
+  `pipewiresrc`, and by default a portal permission has to be stored already --
+  using any input tool once stores one -- because opening that session without one
+  is what raises the remote-control dialog, and a screenshot is not worth that.
+  `WAYLAND_MCP_CURSOR_STREAM=1` forces the attempt without a stored permission and
+  may prompt; `=0` turns the cursor path off. A stream that fails falls back to the
+  Screenshot portal for the following 60 seconds, and is tried again after that. A
+  locked screen, where GNOME refuses new sessions, only costs the cursor of that
+  one capture. The `cursor` field of the result says which one you got.
 
 ### Example commands
 
