@@ -15,8 +15,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 3.8 is the floor pyproject.toml promises; 3.12 is a current release.
-        python-version: ["3.8", "3.12"]
+        # 3.10 is the floor pyproject.toml promises -- it is fastmcp's own
+        # floor, and no fastmcp release supports anything older.
+        python-version: ["3.10", "3.12"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

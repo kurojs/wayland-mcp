@@ -7,7 +7,7 @@
 <br>
 
 <a href="https://pypi.org/project/wayland-mcp-kurojs/"><img src="https://img.shields.io/pypi/v/wayland-mcp-kurojs?style=flat-square&logo=pypi&logoColor=white&color=3775A9" alt="PyPI Version"></a>
-<a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.8%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.8+"></a>
+<a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-A42E2B?style=flat-square&logo=gnu&logoColor=white" alt="License GPL-3.0"></a>
 <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-compatible-3DDC84?style=flat-square" alt="MCP Compatible"></a>
 <a href="README.md"><img src="https://img.shields.io/badge/platform-Linux%20%7C%20Wayland-lightgrey?style=flat-square" alt="Platform Linux/Wayland"></a>
@@ -82,7 +82,7 @@ at all: the compositor itself mediates input through the XDG portals.
 
 ### Prerequisites
 
-- Python 3.8 or higher
+- Python 3.10 or higher
 - A Wayland session (GNOME, KDE Plasma, COSMIC, Hyprland, Sway, ...)
 - No privileged setup and no root. See [Backends](#backends) for what each path
   needs; the server reports it itself through the `describe_environment` tool.
@@ -513,7 +513,7 @@ unavailable, exactly what each candidate would have needed.
 
 **Server won't start**
 
-- Check Python: `python3 --version` (needs 3.8+).
+- Check Python: `python3 --version` (needs 3.10+).
 - Reinstall: `uv pip install -e ".[dev]"`, then `pytest`. The test suite runs
   headless and does not need a graphical session.
 
