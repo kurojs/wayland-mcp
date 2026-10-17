@@ -105,6 +105,14 @@ def forget_restore_token() -> None:
         pass
 
 
+class SessionRefused(portal.PortalError):
+    """The portal would not create a session at all.
+
+    GNOME does this while the screen is locked. It says nothing about the restore
+    token, which is only presented later, and it usually passes.
+    """
+
+
 class PortalRemoteDesktopBackend(InputBackend):
     """A persistent RemoteDesktop session, started on first use."""
 
@@ -138,12 +146,15 @@ class PortalRemoteDesktopBackend(InputBackend):
         A stored restore token can go stale -- the user revoked the permission, the
         compositor restarted, the token rotated out. That must not be fatal, so a
         failure with a token in hand is retried once without it, which falls back
-        to asking the user.
+        to asking the user. A session the portal refuses to create is not such a
+        failure: the token was never presented, so it is kept.
         """
         if self._handle is not None:
             return
         try:
             self._open_session()
+        except SessionRefused:
+            raise
         except portal.PortalError:
             if not self._restore_token:
                 raise
@@ -166,15 +177,18 @@ class PortalRemoteDesktopBackend(InputBackend):
         self._session = portal.PortalSession()
 
         create_token = portal.token()
-        results = self._session.request(
-            IFACE_REMOTE_DESKTOP,
-            "CreateSession",
-            GLib.Variant("(a{sv})", ({
-                "handle_token": GLib.Variant("s", create_token),
-                "session_handle_token": GLib.Variant("s", portal.token()),
-            },)),
-            create_token,
-        )
+        try:
+            results = self._session.request(
+                IFACE_REMOTE_DESKTOP,
+                "CreateSession",
+                GLib.Variant("(a{sv})", ({
+                    "handle_token": GLib.Variant("s", create_token),
+                    "session_handle_token": GLib.Variant("s", portal.token()),
+                },)),
+                create_token,
+            )
+        except portal.PortalError as err:
+            raise SessionRefused(f"{err} (is the screen locked?)") from err
         self._handle = results["session_handle"]
 
         select_token = portal.token()
