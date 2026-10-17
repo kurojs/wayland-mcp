@@ -289,6 +289,25 @@ class PortalRemoteDesktopBackend(InputBackend):
                 self._screen = (int(size[0]), int(size[1]))
             return
 
+    def open_stream(self):
+        """Open a PipeWire connection to this session's screen stream.
+
+        Returns ``(fd, node_id)``. The stream was requested with an embedded
+        cursor, so its frames show the pointer -- which the Screenshot portal's
+        never do. The caller owns the descriptor and must close it.
+        """
+        self._ensure_session()
+        if self._stream is None:
+            raise portal.PortalError("the portal granted no screen stream for this session")
+        from gi.repository import GLib  # pylint: disable=import-outside-toplevel
+
+        fd = self._session.call_for_fd(
+            IFACE_SCREENCAST,
+            "OpenPipeWireRemote",
+            GLib.Variant("(oa{sv})", (self._handle, {})),
+        )
+        return fd, self._stream
+
     def close(self):
         if self._handle and self._session:
             try:

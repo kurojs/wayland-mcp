@@ -96,6 +96,10 @@ sudo dnf install python3-gobject   # Fedora
 sudo pacman -S python-gobject      # Arch
 ```
 
+For the cursor to appear in `portal` screenshots, also install GStreamer's
+PipeWire source and its introspection data, e.g.
+`sudo apt install gstreamer1.0-pipewire gir1.2-gstreamer-1.0` on Debian and Ubuntu.
+
 ### Quick install
 
 ```bash
@@ -270,7 +274,7 @@ to see what it decided and why.
 | `cosmic-screenshot` | the binary, shipped with COSMIC | silent, no dialog; full screen only |
 | `grim` | `grim`, plus `zwlr_screencopy_manager_v1`, **or** `ext_image_copy_capture_manager_v1` with grim >= 1.5 | region capture via `slurp` |
 | `ksnip`, `gnome-screenshot`, `spectacle` | the respective binary | the upstream cascade, preserved |
-| `portal` | `org.freedesktop.portal.Screenshot` + PyGObject | works everywhere; may prompt |
+| `portal` | `org.freedesktop.portal.Screenshot` + PyGObject | works everywhere; may prompt. Draws the cursor when GStreamer's `pipewiresrc` is present (see below) |
 
 **Input**, highest priority first:
 
@@ -314,6 +318,15 @@ from a live run.
   attached to the session. Where the portal refuses one, absolute moves raise an
   explanatory error instead of silently misplacing the cursor; use a relative
   move, or another input backend.
+- **The cursor in `portal` screenshots**: the Screenshot portal has no cursor
+  option, and GNOME leaves the pointer out. With `include_mouse` (the default) the
+  `portal` capture backend therefore takes the frame from a RemoteDesktop
+  session's ScreenCast stream, which embeds the cursor. It needs GStreamer's
+  `pipewiresrc`, and reuses the input backend's restore token. Without it, or once
+  the stream fails (for instance because you stopped the share), capture falls
+  back to the Screenshot portal for the rest of the process. A locked screen,
+  where GNOME refuses new sessions, only costs the cursor of that one capture.
+  The `cursor` field of the result says which one you got.
 
 ### Example commands
 

@@ -70,6 +70,23 @@ class PortalSession:
         except GLib.Error as err:
             raise PortalError(f"{interface}.{method} failed: {err.message}") from err
 
+    def call_for_fd(self, interface, method, args):
+        """A synchronous call whose reply is one file descriptor, ``(h)``.
+
+        The caller owns the returned descriptor and must close it.
+        """
+        from gi.repository import Gio, GLib  # pylint: disable=import-outside-toplevel
+
+        try:
+            reply, fds = self.bus.call_with_unix_fd_list_sync(
+                PORTAL_BUS, PORTAL_PATH, interface, method, args,
+                GLib.VariantType("(h)"), Gio.DBusCallFlags.NONE, self.timeout_ms,
+                None, None,
+            )
+        except GLib.Error as err:
+            raise PortalError(f"{interface}.{method} failed: {err.message}") from err
+        return fds.get(reply.unpack()[0])
+
     def call_on(self, path, interface, method, args, reply_type):
         """Same, but on an arbitrary object path (a session handle, typically)."""
         from gi.repository import Gio, GLib  # pylint: disable=import-outside-toplevel
