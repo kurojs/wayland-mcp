@@ -9,11 +9,11 @@ The Screenshot portal has no cursor option, and GNOME leaves the pointer out. So
 when the cursor is wanted, and a portal permission is already stored, the frame
 comes instead from a RemoteDesktop session's ScreenCast stream, which is requested
 with an embedded cursor. That session reuses the input backend's restore token, so
-where the desktop honours it there is no extra prompt -- and the session it opens
-may not prompt on its own account, because a screenshot is not worth a
-remote-control dialog. It needs GStreamer's pipewiresrc; without it, without a
-stored permission, or if the stream fails, capture falls back to the Screenshot
-portal and reports ``cursor: False``.
+where the desktop honours it there is no extra prompt. It is opened with prompts
+disabled, which stops it retrying without that token -- a screenshot must not be
+what asks for a remote-control permission. It needs GStreamer's pipewiresrc;
+without it, without a stored permission, or if the stream fails, capture falls back
+to the Screenshot portal and reports ``cursor: False``.
 """
 import functools
 import logging
@@ -183,9 +183,10 @@ class PortalScreenshotBackend(CaptureBackend):
         Gst = _gst()  # pylint: disable=invalid-name
         if self._remote is None:
             # Created on first use, so it loads the newest restore token: the input
-            # sessions rotate it each time they start. It deliberately may not
-            # prompt: a capture reuses a permission the user already granted, and
-            # must not be able to raise a dialog or drop that permission.
+            # sessions rotate it each time they start. allow_prompt=False keeps it
+            # from retrying without that token, so a stored permission that no
+            # longer works ends in a refusal: a capture reuses what the user
+            # already granted, and never asks for a fresh one.
             self._remote = PortalRemoteDesktopBackend(allow_prompt=False)
             self._remote.supports(self._caps)
         fd, node = self._remote.open_stream()
