@@ -21,6 +21,15 @@ def runtime_fixture(tmp_path, monkeypatch):
     return tmp_path
 
 
+# The tests below bind real unix sockets, the way a compositor does. Windows
+# does not expose AF_UNIX, so they are skipped there instead of left failing --
+# a skip still records what did not run, which a permanently red suite does not.
+needs_unix_sockets = pytest.mark.skipif(
+    not hasattr(socket, "AF_UNIX"),
+    reason="needs a real AF_UNIX socket, which this platform does not expose",
+)
+
+
 def make_wayland_socket(directory, name, lock=True):
     """Create a real unix socket named *name*, as a compositor would."""
     path = directory / name
@@ -31,6 +40,7 @@ def make_wayland_socket(directory, name, lock=True):
     return sock
 
 
+@needs_unix_sockets
 def test_all_three_variables_are_recovered(runtime):
     sock = make_wayland_socket(runtime, "wayland-1")
     try:
@@ -44,6 +54,7 @@ def test_all_three_variables_are_recovered(runtime):
     assert environ["WAYLAND_DISPLAY"] == "wayland-1"
 
 
+@needs_unix_sockets
 def test_existing_values_are_never_overwritten(runtime):
     sock = make_wayland_socket(runtime, "wayland-1")
     try:
@@ -60,6 +71,7 @@ def test_existing_values_are_never_overwritten(runtime):
     assert environ["DBUS_SESSION_BUS_ADDRESS"] == "unix:path=/custom/bus"
 
 
+@needs_unix_sockets
 def test_a_third_party_socket_does_not_make_the_session_ambiguous(runtime):
     """A wallpaper daemon's socket matches wayland-* but is not a compositor.
 
@@ -79,6 +91,7 @@ def test_a_third_party_socket_does_not_make_the_session_ambiguous(runtime):
     assert added["WAYLAND_DISPLAY"] == "wayland-1"
 
 
+@needs_unix_sockets
 def test_the_name_filter_alone_excludes_a_non_compositor_socket(runtime):
     """Isolates the wayland-<digits> check from the .lock check.
 
@@ -98,6 +111,7 @@ def test_the_name_filter_alone_excludes_a_non_compositor_socket(runtime):
     assert added["WAYLAND_DISPLAY"] == "wayland-1"
 
 
+@needs_unix_sockets
 def test_a_socket_without_its_lock_is_not_a_compositor(runtime):
     sock = make_wayland_socket(runtime, "wayland-3", lock=False)
     try:
@@ -107,6 +121,7 @@ def test_a_socket_without_its_lock_is_not_a_compositor(runtime):
     assert "WAYLAND_DISPLAY" not in added
 
 
+@needs_unix_sockets
 def test_two_real_compositors_are_left_to_the_user(runtime):
     """Guessing between two sessions is worse than declining to guess."""
     sockets = [
